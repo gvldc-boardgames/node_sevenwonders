@@ -2,12 +2,23 @@
   "requires": true,
   "lockfileVersion": 1,
   "dependencies": {
-    "async-limiter": {
-      "integrity": "sha512-jp/uFnooOiO+L211eZOoSyzpOITMXx1rBITauYykG3BRYPu8h0UcxsPNB04RR5vo4Tyz3+ay17tR6JVf9qzYWg==",
-      "resolved": "https://registry.npmjs.org/async-limiter/-/async-limiter-1.0.0.tgz",
-      "version": "1.0.0"
-    },
     "express": "^4.16.3",
+    "neo4j-driver": "^1.6.3",
     "ws": "^6.0.0"
-  }
+  },
+  "name": "board_games",
+  "version": "0.0.1",
+  "description": "Various games gathered in one place",
+  "main": "app.js",
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://www.bitbucket.org/jsmccrumb/board_games.git"
+  },
+  "author": "jsmccrumb",
+  "license": "ISC",
+  "homepage": "https://bitbucket.org/jsmccrumb/board_games#readme"
 }

@@ -1,0 +1,27 @@
+3;4,,,brown,Lumber Yard,T,,,1,2,2,2,2
+3;5,,,brown,Stone Pit,S,,,1,1,2,2,2
+3;5,,,brown,Clay Pool,C,,,1,1,2,2,2
+3;4,,,brown,Ore Vein,O,,,1,2,2,2,2
+6,,1,brown,Tree Farm,T/C,,,0,0,0,1,1
+4,,1,brown,Excavation,S/C,,,0,1,1,1,1
+3,,1,brown,Clay Pit,C/O,,,1,1,1,1,1
+3,,1,brown,Timber Yard,S/T,,,1,1,1,1,1
+5,,1,brown,Forest Cave,T/O,,,0,0,1,1,1
+6,,1,brown,Mine,O/S,,,0,0,0,1,1
+3;6,,,grey,Loom,L,,,1,1,1,2,2
+3;6,,,grey,Glassworks,G,,,1,1,1,2,2
+3;6,,,grey,Press,P,,,1,1,1,2,2
+4;7,,,blue,Pawnshop,3,,,0,1,1,1,2
+3;7,,S,blue,Baths,3,Aquaduct,,1,1,1,1,2
+3;5,,,blue,Altar,2,Temple,,1,1,2,2,2
+3;6,,,blue,Theater,2,Statue,,1,1,1,2,2
+4;5;7,,,yellow,Tavern,5,,,0,1,2,2,3
+3;7,,,yellow,East Trading Post,> CSOW,Forum,,1,1,1,1,2
+3;7,,,yellow,West Trading Post,< CSOW,Forum,,1,1,1,1,2
+3;6,,,yellow,Marketplace,<> LGP,Caravansery,,1,1,1,2,2
+3;7,,T,red,Stockade,1,,,1,1,1,1,2
+3;5,,O,red,Barracks,1,,,1,1,2,2,2
+3;4,,C,red,Guard Tower,1,,,1,2,2,2,2
+3;5,,L,green,Apothecary,1,Stables,Dispensary,1,1,2,2,2
+3;7, ,G,green,Workshop,2,Archery Range,Laboratory,1,1,1,1,2
+3;4, ,P,green,Scriptorium,3,Courthouse,Library,1,2,2,2,2
