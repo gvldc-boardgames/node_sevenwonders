@@ -111,6 +111,7 @@ class Game extends EventEmitter {
   }
 
   async startGame() {
+    this.state = 'setup';
     let resp = await this.runQuery(this.cypherGetWonderOptions());
     let wonderOptions = [];
     for (let record of resp.records) {
@@ -123,8 +124,13 @@ class Game extends EventEmitter {
         });
       }
     }
-    this.wop = wonderOptions;
-    return wonderOptions;
+    this.wonderOptions = wonderOptions;
+    wonderOptions.forEach((wonderOption) => {
+      this.players.filter(player => player.id === wonderOption.playerId).forEach((player) => {
+        player.emit('wonderOption', wonderOption);
+      });
+    });
+    await this.runQuery(this.cypherSaveState());
   }
 
   async getPlayers() {
@@ -195,8 +201,30 @@ class Game extends EventEmitter {
     await this.runQuery(this.cypherSaveHands(age, hands));
   }
 
-  setWonderSide(player, wonderSide) {
+  async setWonderSide(player, wonderSide) {
     console.log('set side', player.id, wonderSide);
+    if (this.wonderSides[player.id] === null) {
+      if (this.wonderOptions.filter((option) => {
+        option.playerId === player.id && option.wonderName === wonderSide.wonderName
+      }).length > 0) {
+        // player can actually choose this wonder
+        this.wonderSides[player.id] = {
+          playerId: player.id,
+          wonderName: wonderSide.wonderName,
+          side: wonderSide.side
+        };
+      } else {
+        // player tried to play a wonder he doesn't have!
+      }
+    } else {
+      // player has already chosen a side
+    }
+    // check if all wonders played
+    if (Object.keys(this.wonderSides).length === this.maxPlayers) {
+      await this.runQuery(this.cypherSaveWonderOptions);
+      await this.cardPromise;
+      // start round
+    }
   }
 
   handlePlayCard(player, card) {
@@ -263,13 +291,13 @@ class Game extends EventEmitter {
     return {params: params, query: query};
   }
 
-  cypherSetState() {
+  cypherSaveState() {
     let params = {
       gameId: this.id,
       state: this.state
     };
     let query = `
-      // Set state
+      // Save state
       MATCH (g:Game {gameId: $gameId}) 
       SET g.state = $state
     `;

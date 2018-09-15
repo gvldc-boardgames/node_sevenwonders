@@ -10,10 +10,19 @@ class Player extends EventEmitter {
     this.name = options.name;
     this.id = options.id || `player-${Date.now()}`;
     this.readyPromise = this.login();
+    this.once('wonderOption', this.receiveWonderOption);
   }
 
   async login() {
     let resp = await this.runQuery(this.cypherLogin());
+  }
+
+  receiveWonderOption(wonderOption) {
+    this.wonderOption = wonderOption;
+  }
+
+  chooseWonderSide(wonderSide) {
+    this.emit('wonderSideChosen', this, wonderSide);
   }
 
   // connect to database and run query
