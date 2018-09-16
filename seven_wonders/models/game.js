@@ -202,10 +202,10 @@ class Game extends EventEmitter {
   }
 
   async setWonderSide(player, wonderSide) {
-    console.log('set side', player.id, wonderSide);
-    if (this.wonderSides[player.id] === null) {
+    console.log('setWonderSide', player, wonderSide);
+    if (this.wonderSides[player.id] == null) {
       if (this.wonderOptions.filter((option) => {
-        option.playerId === player.id && option.wonderName === wonderSide.wonderName
+        return option.playerId === player.id && option.wonderName === wonderSide.wonderName
       }).length > 0) {
         // player can actually choose this wonder
         this.wonderSides[player.id] = {
@@ -214,17 +214,59 @@ class Game extends EventEmitter {
           side: wonderSide.side
         };
       } else {
+        console.log('wonder not for you!');
         // player tried to play a wonder he doesn't have!
       }
     } else {
+      console.log('side already chosen!')
       // player has already chosen a side
     }
     // check if all wonders played
     if (Object.keys(this.wonderSides).length === this.maxPlayers) {
-      await this.runQuery(this.cypherSaveWonderOptions);
+      await this.runQuery(this.cypherSaveWonderOptions(Object.values(this.wonderSides)));
       await this.cardPromise;
-      // start round
+      this.state = 'playing';
+      await this.runQuery(this.cypherSaveState());
+      console.log('start round one age 1');
+      this.startRound()
     }
+  }
+
+  async startRound() {
+    this.playersInfo = {};
+    this.playersHands = {};
+    let playerInfoPromise = this.getPlayersInfo();
+    let playerHandsPromise = this.getPlayersHands();
+  }
+
+  async getPlayersInfo() {
+    let resp = await this.runQuery(this.cypherGetPlayersInfo());
+    resp.records.forEach((record) => {
+      this.playersInfo[record.get('playerId')] = {
+        playerId: record.get('playerId'),
+        playerName: record.get('playerName'),
+        wonderName: record.get('wonderName'),
+        wonderSide: record.get('wonderSide'),
+        wonderResource: record.get('wonderResource'),
+        coins: record.get('coins').toNumber(),
+        military: record.get('military').toNumber(),
+        stagesInfo: record.get('stagesInfo'),
+        cardsPlayed: record.get('cards')
+      };
+    });
+  }
+
+  async getPlayersHands() {
+    let resp = await this.runQuery(this.cypherGetHandInfo());
+    resp.records.forEach((record) => {
+      this.playersHands[record.get('playerId')] = record.get('hand');
+    });
+  }
+
+  async endRound() {
+  }
+
+  async endAge() {
   }
 
   handlePlayCard(player, card) {
@@ -294,12 +336,16 @@ class Game extends EventEmitter {
   cypherSaveState() {
     let params = {
       gameId: this.id,
-      state: this.state
+      state: this.state,
+      round: neo4j.int(this.round),
+      age: neo4j.int(this.age)
     };
     let query = `
       // Save state
       MATCH (g:Game {gameId: $gameId}) 
-      SET g.state = $state
+      SET g.state = $state,
+        g.round = $round,
+        g.age = $age
     `;
 
     return {params: params, query: query};
@@ -457,7 +503,8 @@ class Game extends EventEmitter {
     };
     let query = `
       // get information needed for players to choose wonder side
-      MATCH (g:Game {gameId: $gameId})<-[:JOINS]-(p)<-[:WONDER_FOR]-(w)-[:HAS_SIDE]->(side)-[:HAS_STAGE]->(stage)
+      MATCH (g:Game {gameId: $gameId})<-[:JOINS]-(p)<-[:WONDER_FOR]-(w)-[:HAS_SIDE]->(side)-[:HAS_STAGE]->(stage),
+        (w)-[:INSTANCE_IN]->(g)
       WITH g, p, w, side,
         stage.stage AS sStage, stage.cost AS sCost, stage.resource AS sRes,
         stage.science AS sSci, stage.custom AS sCust, stage.points AS sPoints,
@@ -514,12 +561,12 @@ class Game extends EventEmitter {
       MATCH (w)-[:CHOOSES]->(side)-[:HAS_STAGE]->(stage)
       WITH g, p, w, score, side.side AS wSide, side.resource AS wRes,
         stage.stage AS sStage, stage.cost AS sCost, stage.resource AS sRes,
-        stage.science AS sSci, stage.custom AS sCust, s.points AS sPoints,
+        stage.science AS sSci, stage.custom AS sCust, stage.points AS sPoints,
         stage.coins AS sCoins, stage.military AS sMil,
         CASE
           WHEN (stage)<-[:BUILDS]-() THEN true
           ELSE false
-        END AS stageBuilt ORDER BY wStage
+        END AS stageBuilt ORDER BY sStage
       WITH g, p, w, score, wSide, wRes,
         collect({
           stage: sStage,

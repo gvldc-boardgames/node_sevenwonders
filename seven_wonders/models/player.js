@@ -21,8 +21,23 @@ class Player extends EventEmitter {
     this.wonderOption = wonderOption;
   }
 
+  /**
+   * Alert listeners on chosen side
+   *
+   * @param {object} wonderSide - information about chosen side
+   * @property {string} wonderSide.wonderName - name of wonder side is for
+   * @property {string} wonderSide.side - a/b, which side is chosen
+   */
   chooseWonderSide(wonderSide) {
     this.emit('wonderSideChosen', this, wonderSide);
+  }
+
+  receiveHand(hand) {
+    this.hand = hand;
+  }
+
+  receivePlayersInfo(playersInfo) {
+    this.playersInfo = playersInfo;
   }
 
   // connect to database and run query
