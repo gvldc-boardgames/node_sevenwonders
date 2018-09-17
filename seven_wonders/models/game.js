@@ -19,8 +19,8 @@ class Game extends EventEmitter {
     this.age = 1;
     this.pendingPlays = {};
     this.wonderSides = {};
-    this.playerInfo = {};
-    this.playerHands = {};
+    this.playersInfo = {};
+    this.playersHands = {};
     this.setListeners();
     this.readyPromise = this.checkState();
   }
@@ -233,10 +233,19 @@ class Game extends EventEmitter {
   }
 
   async startRound() {
+    this.pendingPlays = {};
     this.playersInfo = {};
     this.playersHands = {};
     let playerInfoPromise = this.getPlayersInfo();
     let playerHandsPromise = this.getPlayersHands();
+    await playerInfoPromise;
+    this.players.forEach(player => player.emit('playersInfo', this.playersInfo));
+    await playerHandsPromise;
+    for (let [playerId, hand] of Object.entries(this.playersHands)) {
+      this.players.filter(player => player.id === playerId).forEach((player) => {
+        player.emit('hand', hand);
+      });
+    }
   }
 
   async getPlayersInfo() {
@@ -250,9 +259,13 @@ class Game extends EventEmitter {
         wonderResource: record.get('wonderResource'),
         coins: record.get('coins').toNumber(),
         military: record.get('military').toNumber(),
-        stagesInfo: record.get('stagesInfo'),
-        cardsPlayed: record.get('cards')
+        stagesInfo: record.get('stagesInfo')
       };
+    });
+    // separate call to get cards played
+    resp = await this.runQuery(this.cypherGetPlayedCards());
+    resp.records.forEach((record) => {
+      this.playersInfo[record.get('playerId')].cardsPlayed = record.get('cards');
     });
   }
 
@@ -264,21 +277,93 @@ class Game extends EventEmitter {
   }
 
   async endRound() {
+    await this.savePendingPlays();
+    await this.rotateHands();
+    if (this.round === 6) {
+      // end of age!
+      this.endAge();
+    } else {
+      this.round++;
+    }
+    this.startRound();
+  }
+
+  async savePendingPlays() {
+    let plays = [];
+    let discards = [];
+    let wonders = [];
+    for (let [playerId, play] of Object.entries(this.pendingPlays)) {
+      let wonderName = this.wonderSides[playerId].wonderName;
+      if (play.type === 'play') {
+        plays.push({playerId: playerId,
+          wonderName: wonderName,
+          cardName: play.card.name,
+          players: play.card.players
+        });
+      } else if (play.type === 'discard') {
+        discards.push({playerId: playerId,
+          wonderName: wonderName,
+          cardName: play.card.name,
+          players: play.card.players
+        });
+      } else if (play.type === 'wonder') {
+        wonders.push({playerId: playerId,
+          wonderName: wonderName,
+          cardName: play.card.name,
+          players: play.card.players
+        });
+      } else {
+        this.emit('error', 'Unrecognized play type');
+      }
+    }
+    await this.runQuery(this.cypherPlayCards(plays));
+    await this.runQuery(this.cypherDiscard(discards));
+    await this.runQuery(this.cypherBuildWonders(wonders));
+    // todo - pay people as needed!
+    // N.B. discard handles money for discarding
+  }
+
+  async rotateHands() {
   }
 
   async endAge() {
+    this.age++;
+    this.round = 1;
+  }
+
+  checkEndOfRound() {
+    if (Object.keys(this.pendingPlays).length === this.players.length)
+      this.endRound();
   }
 
   handlePlayCard(player, card) {
     console.log('handle play card', player.id, card);
+    // todo - ensure player can actually play the card
+    this.pendingPlays[player.id] = {
+      type: 'play',
+      card: card
+    };
+    this.checkEndOfRound();
   }
 
   handleBuildWonder(player, card) {
     console.log('handle build wonder', player.id, card);
+    // todo - ensure player can actually play the card
+    this.pendingPlays[player.id] = {
+      type: 'wonder',
+      card: card
+    };
+    this.checkEndOfRound();
   }
 
   handleDiscard(player, card) {
     console.log('handle discad', player.id, card);
+    // todo - ensure player can actually play the card
+    this.pendingPlays[player.id] = {
+      type: 'discard',
+      card: card
+    };
+    this.checkEndOfRound();
   }
 
   // connect to database and run query
@@ -464,9 +549,9 @@ class Game extends EventEmitter {
       MERGE (age)-[:HAS_HAND]->(h:Hand)-[:BELONGS_TO]->(w)
       WITH g, hand, h
       UNWIND hand.cards AS card
-      MATCH (card:${age}Card {name: card.name, players: card.players})
+      MATCH (c:${age}Card {name: card.name, players: card.players})
       MERGE (ci:${age}CardInstance {name: card.name, players: card.players, gameId: $gameId})
-      SET ci += card
+      SET ci += c
       MERGE (ci)-[:IN_HAND]->(h)
       MERGE (ci)-[:USED_IN]->(g)
       WITH g, ci WHERE ci.freeFrom IS NOT NULL
@@ -545,7 +630,8 @@ class Game extends EventEmitter {
       // save chosen wonderside
       MATCH (g:Game {gameId: $gameId})
       UNWIND $chosenSides AS sideInfo
-      MATCH (g)<-[:JOINS]-({playerId: sideInfo.playerId})<-[:WONDER_FOR]-(w {name: sideInfo.wonderName})-[:HAS_SIDE]->(s {side: sideInfo.side})
+      MATCH (g)<-[:JOINS]-({playerId: sideInfo.playerId})<-[:WONDER_FOR]-(w {name: sideInfo.wonderName})-[:HAS_SIDE]->(s {side: sideInfo.side}),
+        (w)-[:INSTANCE_IN]->(g)
       MERGE (w)-[:CHOOSES]->(s)
     `;
     return {params: params, query: query};
@@ -557,8 +643,8 @@ class Game extends EventEmitter {
     };
     let query = `
       // get public information about all players
-      MATCH (g:Game {gameId: $gameId})<-[:JOINS]-(p)<-[:WONDER_FOR]-(w)-[:SCORES]->(score)
-      MATCH (w)-[:CHOOSES]->(side)-[:HAS_STAGE]->(stage)
+      MATCH (g:Game {gameId: $gameId})<-[:JOINS]-(p)<-[:WONDER_FOR]-(w)-[:SCORES]->(score),
+        (g)<-[:INSTANCE_IN]-(w)-[:CHOOSES]->(side)-[:HAS_STAGE]->(stage)
       WITH g, p, w, score, side.side AS wSide, side.resource AS wRes,
         stage.stage AS sStage, stage.cost AS sCost, stage.resource AS sRes,
         stage.science AS sSci, stage.custom AS sCust, stage.points AS sPoints,
@@ -579,9 +665,6 @@ class Game extends EventEmitter {
           military: sMil,
           built: stageBuilt
         }) AS stagesInfo
-      OPTIONAL MATCH (w)-[:PLAYS]->(c)
-      OPTIONAL MATCH (c)-[:FREE_BUILDS]->(free)
-      WITH g, p, w, score, wSide, wRes, stagesInfo, c, collect(free.name) AS freeBuilds
       RETURN g.gameId AS gameId,
         p.playerId AS playerId,
         p.name AS playerName,
@@ -590,7 +673,29 @@ class Game extends EventEmitter {
         wRes AS wonderResource,
         score.coins AS coins,
         score.military AS military,
-        stagesInfo,
+        stagesInfo
+    `;
+    return {params: params, query: query};
+  }
+
+  cypherGetPlayedCards() {
+    let params = {
+      gameId: this.id
+    };
+    let query = `
+      // get cards played by all players
+      MATCH (g:Game {gameId: $gameId})<-[:JOINS]-(p)<-[:WONDER_FOR]-(w)-[:INSTANCE_IN]->(g),
+        (w)-[:PLAYS]->(c)
+      OPTIONAL MATCH (c)-[:FREE_BUILDS]->(free)
+      WITH g, p, w, c,
+        CASE
+          WHEN free IS NULL THEN []
+          ELSE collect(free.name)
+        END AS freeBuilds
+      RETURN g.gameId AS gameId,
+        p.playerId AS playerId,
+        p.name AS playerName,
+        w.name AS wonderName,
         collect({
           name: c.name,
           color: c.color,
@@ -610,15 +715,18 @@ class Game extends EventEmitter {
     let query = `
       // get private information about player's hands
       MATCH (a:Age {age: $age})<-[:HAS_AGE]-(g:Game {gameId: $gameId})<-[:JOINS]-(p)<-[:WONDER_FOR]-(w),
-        (a)-[:HAS_HAND]->(hand)-[:BELONGS_TO]->(w),
+        (a)-[:HAS_HAND]->(hand)-[:BELONGS_TO]->(w)-[:INSTANCE_IN]->(g),
         (hand)<-[:IN_HAND]-(card)
       OPTIONAL MATCH (card)-[:FREE_BUILDS]->(free)
       WITH g, p, w, hand, card,
-        collect({
-          name: free.name,
-          color: free.color,
-          value: free.value
-        }) AS freeInfo
+        CASE
+          WHEN free IS NULL THEN []
+          ELSE collect({
+            name: free.name,
+            color: free.color,
+            value: free.value
+          }) 
+        END AS freeInfo
       RETURN g.gameId AS gameId,
         p.playerId AS playerId,
         collect({
@@ -627,6 +735,7 @@ class Game extends EventEmitter {
           value: card.value,
           cost: card.cost,
           freeBuilds: freeInfo,
+          players: card.players,
           isFree: CASE
             WHEN (card)<-[:FREE_BUILDS]-()<-[:PLAYS]-(w) THEN true
             ELSE false
@@ -640,7 +749,7 @@ class Game extends EventEmitter {
     let stringAge = this.ageToString(this.age);
     let params = {
       gameId: this.id,
-      chosenSides: chosenSides,
+      cards: cards,
       age: stringAge
     };
     let query = `
@@ -660,16 +769,20 @@ class Game extends EventEmitter {
     let stringAge = this.ageToString(this.age);
     let params = {
       gameId: this.id,
-      chosenSides: chosenSides,
+      cards: cards,
       age: stringAge
     };
     let query = `
       // save chosen wonder building
       MATCH (g:Game {gameId: $gameId})-[:HAS_AGE]->(a {age: $age})
       UNWIND $cards AS playInfo
-      MATCH (g)<-[:JOINS]-({playerId: playInfo.playerId})<-[:WONDER_FOR]-(w {name: playInfo.wonderName})-[:CHOOSES]->()-[:HAS_STAGE]->(stage {stage: $playInfo.stage}),
-        (a)-[:HAS_HAND]->(hand)-[:BELONGS_TO]->(w),
+      MATCH (g)<-[:JOINS]-({playerId: playInfo.playerId})<-[:WONDER_FOR]-(w {name: playInfo.wonderName})-[:CHOOSES]->()-[:HAS_STAGE]->(stage),
+        (a)-[:HAS_HAND]->(hand)-[:BELONGS_TO]->(w)-[:INSTANCE_IN]->(g),
         (hand)<-[ih:IN_HAND]-(card:${stringAge}CardInstance {players: playInfo.players, name: playInfo.cardName, gameId: $gameId})
+      WHERE NOT (stage)<-[:BUILDS]-()
+      WITH ih, stage, card, playInfo ORDER BY stage.stage
+      WITH ih, card, playInfo, collect(stage) AS stages
+      WITH ih, card, playInfo, head(stages) AS stage
       MERGE (stage)<-[:BUILDS]-(card)
       DELETE ih
     `;
@@ -680,7 +793,7 @@ class Game extends EventEmitter {
     let stringAge = this.ageToString(this.age);
     let params = {
       gameId: this.id,
-      chosenSides: chosenSides,
+      cards: cards,
       age: stringAge
     };
     let query = `

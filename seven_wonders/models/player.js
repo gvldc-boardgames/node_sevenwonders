@@ -11,6 +11,10 @@ class Player extends EventEmitter {
     this.id = options.id || `player-${Date.now()}`;
     this.readyPromise = this.login();
     this.once('wonderOption', this.receiveWonderOption);
+    this.receiveHand = this.receiveHand.bind(this);
+    this.receivePlayersInfo = this.receivePlayersInfo.bind(this);
+    this.on('hand', this.receiveHand);
+    this.on('playersInfo', this.receivePlayersInfo);
   }
 
   async login() {
@@ -38,6 +42,18 @@ class Player extends EventEmitter {
 
   receivePlayersInfo(playersInfo) {
     this.playersInfo = playersInfo;
+  }
+
+  playCard(card) {
+    this.emit('playCard', this, card);
+  }
+
+  discard(card) {
+    this.emit('discard', this, card);
+  }
+
+  buildWonder(card) {
+    this.emit('buildWonder', this, card);
   }
 
   // connect to database and run query
