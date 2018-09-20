@@ -284,8 +284,8 @@ class Game extends EventEmitter {
       this.endAge();
     } else {
       this.round++;
+      this.startRound();
     }
-    this.startRound();
   }
 
   async savePendingPlays() {
@@ -324,11 +324,21 @@ class Game extends EventEmitter {
   }
 
   async rotateHands() {
+    await this.runQuery(this.cypherRotateHands());
   }
 
   async endAge() {
     this.age++;
     this.round = 1;
+    if (this.age < 4) {
+      this.startRound();
+    } else {
+      this.endGame();
+    }
+  }
+
+  endGame() {
+    // game over check scores etc
   }
 
   checkEndOfRound() {
@@ -346,6 +356,29 @@ class Game extends EventEmitter {
     this.checkEndOfRound();
   }
 
+  canPlayCard(player, card) {
+    if (card.isFree) {
+      return true;
+    } else {
+      let requirements = card.cost;
+      let playerResources = this.getPlayerResources(player);
+    }
+  }
+
+  // return resources availble for player to use
+  getPlayerResources(player) {
+    let playerInfo = this.playersInfo[player.id];
+    let resources = [];
+    resources.push(playerInfo.wonderResource);
+    resources.push(...playerInfo.stagesInfo
+                        .filter(stage => stage.isBuilt && stage.isResource)
+                        .map(stage => stage.resource));
+    if (playerInfo.cardsPlayed != null) {
+      resources.push(...playerInfo.cardsPlayed.filter(card => card.isResource).map(card => card.value));
+    }
+    return resources;
+  }
+
   handleBuildWonder(player, card) {
     console.log('handle build wonder', player.id, card);
     // todo - ensure player can actually play the card
@@ -354,6 +387,9 @@ class Game extends EventEmitter {
       card: card
     };
     this.checkEndOfRound();
+  }
+
+  canBuildWonder(player, card) {
   }
 
   handleDiscard(player, card) {
@@ -648,7 +684,7 @@ class Game extends EventEmitter {
       WITH g, p, w, score, side.side AS wSide, side.resource AS wRes,
         stage.stage AS sStage, stage.cost AS sCost, stage.resource AS sRes,
         stage.science AS sSci, stage.custom AS sCust, stage.points AS sPoints,
-        stage.coins AS sCoins, stage.military AS sMil,
+        stage.coins AS sCoins, stage.military AS sMil, stage.isResource AS sIsRes,
         CASE
           WHEN (stage)<-[:BUILDS]-() THEN true
           ELSE false
@@ -663,7 +699,8 @@ class Game extends EventEmitter {
           custom: sCust,
           coins: sCoins,
           military: sMil,
-          built: stageBuilt
+          isBuilt: stageBuilt,
+          isResource: sIsRes
         }) AS stagesInfo
       RETURN g.gameId AS gameId,
         p.playerId AS playerId,
@@ -701,6 +738,7 @@ class Game extends EventEmitter {
           color: c.color,
           value: c.value,
           cost: c.cost,
+          isResource: c.isResource,
           freeBuilds: freeBuilds
         }) AS cards
     `;
@@ -808,6 +846,22 @@ class Game extends EventEmitter {
       SET score.coins = score.coins + 3
     `;
     return {params: params, query: query};
+  }
+
+  cypherRotateHands() {
+    let stringAge = this.ageToString(this.age);
+    let params = {
+      gameId: this.id,
+      age: stringAge
+    };
+    let query = `
+      // rotate hands based on age
+      MATCH (:Game {gameId: $gameId})-[:HAS_AGE]->({age: $age})-[:HAS_HAND]->(hand)-[bt:BELONGS_TO]->(w),
+        (w)${this.age === 2 ? '<' : ''}-[:CLOCKWISE]-${this.age === 2 ? '' : '>'}(nextW)
+      DELETE bt
+      MERGE (hand)-[:BELONGS_TO]->(nextW)
+    `;
+    return {query, params};
   }
 }
 
