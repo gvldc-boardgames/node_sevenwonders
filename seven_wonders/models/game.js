@@ -259,7 +259,9 @@ class Game extends EventEmitter {
         wonderResource: record.get('wonderResource'),
         coins: record.get('coins').toNumber(),
         military: record.get('military').toNumber(),
-        stagesInfo: record.get('stagesInfo')
+        stagesInfo: record.get('stagesInfo'),
+        clockwisePlayer: record.get('clockwisePlayer'),
+        counterClockwisePlayer: record.get('counterClockwisePlayer')
       };
     });
     // separate call to get cards played
@@ -357,12 +359,35 @@ class Game extends EventEmitter {
   }
 
   canPlayCard(player, card) {
-    if (card.isFree) {
+    if (this.playersInfo[player.id].cardsPlayed != null && 
+        this.playersInfo[player.id].cardsPlayed.map(card => card.name).indexOf(card.name) != -1) {
+      return false;
+    } else if (card.isFree || (card.cost == null)) {
       return true;
+    // TODO: make this method cleaner... make a card class
+    } else if (card.playOption == null) {
+      return false;
     } else {
-      let requirements = card.cost;
-      let playerResources = this.getPlayerResources(player);
+      let requirements = this.resourceObject(card.cost.split(''));
+      let playerResources = this.resourceObject(this.getPlayerResources(player));
+      let playedResources = [];
+      Object.values(card.playOption).forEach(player => playedResources.push(...player.resource));
     }
+  }
+
+  resourceObject(resourceArray = []) {
+    let resources = {};
+    let ensureKey = (object, key) => object[key] = 0;
+    resourceArray.forEach((resource) => {
+      if (resource.includes('/')) {
+        ensureKey(resources, resource);
+        resources[resource]++;
+      } else {
+        ensureKey(resources, resource[0]);
+        resources[resource[0]] += resource.length;
+      }
+    });
+    return resources;
   }
 
   // return resources availble for player to use
@@ -710,6 +735,8 @@ class Game extends EventEmitter {
         wRes AS wonderResource,
         score.coins AS coins,
         score.military AS military,
+        [ (w)-[:CLOCKWISE]->()-[:WONDER_FOR]->(cp) | cp.playerId ][0] AS clockwisePlayer,
+        [ (w)<-[:CLOCKWISE]-()-[:WONDER_FOR]->(cp) | cp.playerId ][0] AS counterClockwisePlayer,
         stagesInfo
     `;
     return {params: params, query: query};
