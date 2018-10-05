@@ -52,10 +52,10 @@ class Player extends EventEmitter {
   getCombos(card) {
     if (this.playersInfo[this.id].cardsPlayed != null && 
         this.playersInfo[this.id].cardsPlayed.map(card => card.name).indexOf(card.name) != -1) {
-      card.combos = [];
+      card.playCombos = [];
       return false;
     } else if (card.isFree || (card.cost == null)) {
-      card.combos = [
+      card.playCombos = [
         {
           clockwise: {resources: [], cost: 0},
           counterClockwise: {resources: [], cost: 0},
@@ -64,7 +64,7 @@ class Player extends EventEmitter {
       ];
       return true;
     } else if (!isNaN(card.cost)) {
-      card.combos = [
+      card.playCombos = [
         {
           clockwise: {resources: [], cost: 0},
           counterClockwise: {resources: [], cost: 0},
@@ -76,155 +76,121 @@ class Player extends EventEmitter {
       Object.keys(requirements).filter(key => key.length !== 1)
           .forEach(key => delete requirements[key]);
       let playerResources = this.getMyResources();
-      requirements = this.checkResources(requirements, playerResources);
+      card.playCombos = this.getAllCombos(requirements, playerResources);
+    }
+  }
+
+  getAllCombos(requirements, resources) {
+    requirements = this.checkResources(requirements, resources);
+    if (Object.keys(requirements).length === 0) {
+      return [
+        {
+          clockwise: {resources: [], cost: 0},
+          counterClockwise: {resources: [], cost: 0},
+          self: {resources: [], cost: 0}
+        }
+      ];
+    } else {
+      let usableOptions = resources.withOptions.filter(options => options.some(opt => requirements[opt]));
+      ({requirements, usableOptions} = this.checkOptionalResources(requirements, usableOptions));
       if (Object.keys(requirements).length === 0) {
-        card.combos = [
+        return [
           {
             clockwise: {resources: [], cost: 0},
             counterClockwise: {resources: [], cost: 0},
             self: {resources: [], cost: 0}
           }
         ];
-        return true;
       } else {
-        let usableOptions = playerResources.withOptions.filter(options => options.some(opt => requirements[opt]));
-        ({requirements, usableOptions} = this.checkOptionalResources(requirements, usableOptions));
-        if (Object.keys(requirements).length === 0) {
-          card.combos = [
-            {
-              clockwise: {resources: [], cost: 0},
-              counterClockwise: {resources: [], cost: 0},
-              self: {resources: [], cost: 0}
-            }
-          ];
-          return true;
-        } else {
-          let rates = this.getRates();
-          let neighborsResources = this.getNeighborsResource(requirements);
-          let summaryFunction = function(resource) {
-            let defaultToZero = (val) => val == null ? 0 : val;
-            let optionalCount = defaultToZero(usableOptions.filter(val => val.some(r => r === resource)).length);
-            let clockwiseResource = defaultToZero(neighborsResources.clockwise[resource]);
-            let clockwiseOptional = defaultToZero(neighborsResources.clockwise.withOptions
-                  .filter(val => val.some(r => r === resource)).length);
-            let counterClockwiseResource = defaultToZero(neighborsResources.counterClockwise[resource]);
-            let counterClockwiseOptional = defaultToZero(neighborsResources.counterClockwise.withOptions
-                  .filter(val => val.some(r => r === resource)).length);
-            let requiredCount = defaultToZero(requirements[resource]);
-            return {
-              resource,
-              optionalCount,
-              clockwiseResource,
-              clockwiseOptional,
-              counterClockwiseResource,
-              counterClockwiseOptional,
-              requiredCount,
-              isRequired: optionalCount +
-                  clockwiseResource +
-                  clockwiseOptional +
-                  counterClockwiseResource +
-                  counterClockwiseOptional === requiredCount
-            };
-          };
-          let sortMap = function(el, i, arr) {
-            // if option is one of any (natural or manufactured) move to end
-            if (el.length >= 3) {
-              return {index: i, value: 10};
-            } else {
-              let summaries = el.map(summaryFunction);
-              if (summaries.some(s => s.isRequired)) {
-                return {index: i, value: -10};
-              } else {
-                let diff = summaries.map(s => s.optionalCount - s.requiredCount);
-                return {index: i, value: Math.min(...diff) - Math.max(...diff)};
-              }
-            }
-          };
-          if (Object.keys(requirements)
-              .map(summaryFunction)
-              .some((s) => {
-                return s.optionalCount +
-                    s.clockwiseResource +
-                    s.clockwiseOptional +
-                    s.counterClockwiseResource +
-                    s.counterClockwiseOptional < s.requiredCount;
-              })) {
-            card.combos = [];
-            return false;
+        // TODO: filter to uniq and sort?
+        return this.recursiveComboCheck(requirements, usableOptions);
+      }
+    }
+    return [];
+  }
+
+  recursiveComboCheck(requirements, usableOptions) {
+    usableOptions = [...usableOptions];
+    requirements = {...requirements};
+    if (usableOptions.length > 0) {
+      let option = usableOptions.pop();
+      let combos = [];
+      option.forEach((resource) => {
+        if (requirements[resource]) {
+          let tempReq = {...requirements};
+          tempReq[resource] -= 1;
+          if (tempReq[resource] <= 0) {
+            delete tempReq[resource];
           }
-          while (usableOptions.length > 0) {
-            usableOptions = usableOptions.filter(options => options.some(opt => requirements[opt]))
-                .map(sortMap)
-                .sort((a,b) => a.value - b.value)
-                .map(summary => usableOptions[summary.index]);
-            let currentOption = usableOptions.unshift();
-            let summaries = currentOption.map(summaryFunction);
-            let chosenResource = this.pickValue(summaries);
-            requirements[chosenResource] -= 1;
-            if (requirements[chosenResource] <= 0) {
-              delete requirements[chosenResource];
-            }
-          }
-          if (Object.keys(requirements).length === 0) {
-            card.combos = [
-              {
-                clockwise: {resources: [], cost: 0},
-                counterClockwise: {resources: [], cost: 0},
-                self: {resources: [], cost: 0}
+          ({requirements: tempReq, usableOptions} = this.checkOptionalResources(requirements, usableOptions));
+          combos.push(...this.recursiveComboCheck(tempReq, usableOptions));
+        }
+      });
+      return combos;
+    } else {
+      let neighborsResources = this.getNeighborsResource(requirements);
+      return this.recursiveResourceBuy(requirements, neighborsResources);  
+    }
+  }
+
+  recursiveResourceBuy(requirements, neighborsResources) {
+    if (neighborsResources.clockwise.withOptions.length > 0) {
+      //TODO: recurse this
+    } else if (neighborsResources.counterClockwise.withOptions.length > 0) {
+      //TODO: recurse this
+    } else {
+      let rates = this.getRates();
+      let summaryFunction = function(resource) {
+        let defaultToZero = (val) => val == null ? 0 : val;
+        let clockwiseResource = defaultToZero(neighborsResources.clockwise[resource]);
+        let counterClockwiseResource = defaultToZero(neighborsResources.counterClockwise[resource]);
+        let requiredCount = defaultToZero(requirements[resource]);
+        return {
+          resource,
+          clockwiseResource,
+          counterClockwiseResource,
+          requiredCount
+        };
+      };
+      // check if required resource is impossible to buy
+      if (Object.keys(requirements)
+          .map(summaryFunction)
+          .some((s) => {
+            return s.clockwiseResource +
+                s.counterClockwiseResource < s.requiredCount;
+          })) {
+        return [];
+      }
+      let allCombos = reqSummary.map(req => this.costToBuy(req, rates));
+      while (allCombos.length > 1) { 
+        let c1 = allCombos.shift();
+        let c2 = allCombos.shift();
+        let newC = [];
+        for (let i = 0; i < c1.length; i++){
+          for (let j = 0; j < c2.length; j++){
+            newC.push({
+              self: {
+                count: c1[i].self.count + c2[j].self.count,
+                cost: c1[i].self.cost + c2[j].self.cost
+              },
+              clockwise: {
+                count: c1[i].clockwise.count + c2[j].clockwise.count,
+                cost: c1[i].clockwise.cost + c2[j].clockwise.cost
+              },
+              counterClockwise: {
+                count: c1[i].counterClockwise.count + c2[j].counterClockwise.count,
+                cost: c1[i].counterClockwise.cost + c2[j].counterClockwise.cost
               }
-            ];
-            return true;
-          } else {
-            // update neighbor resources now that options played
-            neighborsResources = this.getNeighborsResource(requirements);
-            let reqSummary = Object.keys(requirements).map(summaryFunction);
-            if (reqSummary.some((s) => {
-                return s.optionalCount +
-                    s.clockwiseResource +
-                    s.clockwiseOptional +
-                    s.counterClockwiseResource +
-                    s.counterClockwiseOptional < s.requiredCount;
-              })) {
-              card.combos = [];
-              return false;
-            }
-            // TODO get array of combos for each resource into one array and reduce to affordable options
-            let allCombos = reqSummary.map(req => this.costToBuy(req, rates));
-            while (allCombos.length > 1) { 
-              let c1 = allCombos.shift();
-              let c2 = allCombos.shift();
-              let newC = [];
-              for (let i = 0; i < c1.length; i++){
-                for (let j = 0; j < c2.length; j++){
-                  newC.push({
-                    self: {
-                      count: c1[i].self.count + c2[j].self.count,
-                      cost: c1[i].self.cost + c2[j].self.cost
-                    },
-                    clockwise: {
-                      count: c1[i].clockwise.count + c2[j].clockwise.count,
-                      cost: c1[i].clockwise.cost + c2[j].clockwise.cost
-                    },
-                    counterClockwise: {
-                      count: c1[i].counterClockwise.count + c2[j].counterClockwise.count,
-                      cost: c1[i].counterClockwise.cost + c2[j].counterClockwise.cost
-                    }
-                  });
-                }
-              }
-              allCombos.unshift(newC);
-            }
-            card.combos = allCombos[0].filter((combo) => {
-              return Object.values(combo).reduce((acc, obj) => {
-                return acc + obj.cost;
-              }, 0) <= this.playersInfo[this.id].coins;
             });
-            return card.combos.length > 0;
           }
         }
+        allCombos.unshift(newC);
       }
-      card.combos = [];
-      return false;
+      return allCombos[0].filter((combo) => {
+        return Object.values(combo).reduce((acc, obj) => {
+          return acc + obj.cost;
+        }, 0) <= this.playersInfo[this.id].coins;
+      });
     }
   }
   
@@ -332,59 +298,8 @@ class Player extends EventEmitter {
    */
   costToBuy(summary, rates) {
     let combos = [];
-    let maxClockwise = summary.clockwiseResource + summary.clockwiseOptional;
-    let maxCounterClockwise = summary.counterClockwiseResource + 
-        summary.counterClockwiseOptional;
-    if (summary.optionalCount > 0) {
-      let requiredCount = summary.requiredCount - summary.optionalCount;
-      if (maxClockwise >= requiredCount) {
-        combos.push({
-          clockwise: {
-            count: requiredCount,
-            cost: requiredCount * rates.clockwise[summary.resource]
-          },
-          self: {count: 0, cost: 0},
-          counterClockwise: {count: 0, cost: 0}
-        });
-      } else if (maxClockwise + maxCounterClockwise >= requiredCount) {
-        combos.push({
-          clockwise: {
-            count: maxClockwise,
-            cost: maxClockwise * rates.clockwise[summary.resource]
-          },
-          self: {count: 0, cost: 0},
-          counterClockwise: {
-            count: requiredCount - maxClockwise,
-            cost: (requiredCount - maxClockwise) *
-                rates.counterClockwise[summary.resource]
-          }
-        });
-      }
-      if (maxCounterClockwise >= requiredCount) {
-        combos.push({
-          clockwise: {count: 0, cost: 0},
-          self: {count: 0, cost: 0},
-          counterClockwise: {
-            count: requiredCount,
-            cost: requiredCount *
-                rates.counterClockwise[summary.resource]
-          }
-        });
-      } else if (maxClockwise + maxCounterClockwise >= requiredCount) {
-        combos.push({
-          clockwise: {
-            count: requiredCount - maxCounterClockwise,
-            cost: (requiredCount - maxCounterClockwise) *
-                rates.clockwise[summary.resource]
-          },
-          self: {count: 0, cost: 0},
-          counterClockwise: {
-            count: maxCounterClockwise,
-            cost: maxCounterClockwise * rates.counterClockwise[summary.resource]
-          }
-        });
-      }
-    }
+    let maxClockwise = summary.clockwiseResource;
+    let maxCounterClockwise = summary.counterClockwiseResource;
     for (let i = 0; i <= maxClockwise && i <= summary.requiredCount; i++) {
       if (i + maxCounterClockwise >= summary.requiredCount) {
         combos.push({
