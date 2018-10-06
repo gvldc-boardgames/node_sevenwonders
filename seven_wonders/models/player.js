@@ -102,8 +102,15 @@ class Player extends EventEmitter {
           }
         ];
       } else {
-        // TODO: filter to uniq and sort?
-        return this.recursiveComboCheck(requirements, usableOptions);
+        let keySet = new Set();
+        let combos = this.recursiveComboCheck(requirements, usableOptions);
+        let comboCost = (combo) => Object.values(combo)
+            .reduce((acc, val) => { return acc + val.cost }, 0); 
+        let uniqCombos = combos.filter(combo => {
+          let key = JSON.stringify(combo);
+          return !keySet.has(key) && keySet.add(key);
+        });
+        return uniqCombos.sort((a,b) => comboCost(a) - comboCost(b));
       }
     }
     return [];
@@ -133,31 +140,72 @@ class Player extends EventEmitter {
     }
   }
 
-  recursiveResourceBuy(requirements, neighborsResources) {
-    if (neighborsResources.clockwise.withOptions.length > 0) {
-      //TODO: recurse this
-    } else if (neighborsResources.counterClockwise.withOptions.length > 0) {
-      //TODO: recurse this
+  applyNeighborOption(requirements, resource, resources) {
+    requirements = {...requirements}
+    if (resources[resource] == null) {
+      resources[resource] = 1;
+    } else {
+      resources[resource]++;
+    }
+    let optionalUse = this.checkOptionalResources(requirements, resources.withOptions);
+    requirements = optionalUse.requirements;
+    resources.withOptions = optionalUse.usableOptions
+      .filter(options => options.some(opt => requirements[opt]));
+    optionalUse.usedOptions.forEach(function(resource) {
+      if (resources[resource] == null) {
+        resources[resource] = 1;
+      } else {
+        resources[resource] += 1;
+      }
+    });
+    return resources;
+  }
+
+  recursiveResourceBuy(requirements, buyable) {
+    requirements = {...requirements};
+    buyable = {...buyable};
+    if (buyable.clockwise.withOptions.length > 0) {
+      let resourceOption = buyable.clockwise.withOptions.pop();
+      for (let i = 0; i < resourceOption.length; i++) {
+        let res = resourceOption[i];
+        if (requirements[res]) {
+          buyable.clockwise = 
+              this.applyNeighborOption(requirements, res, buyable.clockwise);
+          this.recursiveResourceBuy(requirements, buyable);
+        }
+      }
+    } else if (buyable.counterClockwise.withOptions.length > 0) {
+      let resourceOption = buyable.counterClockwise.withOptions.pop();
+      for (let i = 0; i < resourceOption.length; i++) {
+        let res = resourceOption[i];
+        if (requirements[res]) {
+          buyable.counterClockwise = this.applyNeighborOption(
+              requirements,
+              res,
+              buyable.counterClockwise
+          );
+          this.recursiveResourceBuy(requirements, buyable);
+        }
+      }
     } else {
       let rates = this.getRates();
       let summaryFunction = function(resource) {
         let defaultToZero = (val) => val == null ? 0 : val;
-        let clockwiseResource = defaultToZero(neighborsResources.clockwise[resource]);
-        let counterClockwiseResource = defaultToZero(neighborsResources.counterClockwise[resource]);
+        let clockwiseResource = defaultToZero(buyable.clockwise[resource]);
+        let counterResource = defaultToZero(buyable.counterClockwise[resource]);
         let requiredCount = defaultToZero(requirements[resource]);
         return {
           resource,
           clockwiseResource,
-          counterClockwiseResource,
+          counterResource,
           requiredCount
         };
       };
+      let reqSummary = Object.keys(requirements).map(summaryFunction);
       // check if required resource is impossible to buy
-      if (Object.keys(requirements)
-          .map(summaryFunction)
-          .some((s) => {
+      if (reqSummary.some((s) => {
             return s.clockwiseResource +
-                s.counterClockwiseResource < s.requiredCount;
+                s.counterResource < s.requiredCount;
           })) {
         return [];
       }
@@ -178,7 +226,8 @@ class Player extends EventEmitter {
                 cost: c1[i].clockwise.cost + c2[j].clockwise.cost
               },
               counterClockwise: {
-                count: c1[i].counterClockwise.count + c2[j].counterClockwise.count,
+                count: c1[i].counterClockwise.count +
+                    c2[j].counterClockwise.count,
                 cost: c1[i].counterClockwise.cost + c2[j].counterClockwise.cost
               }
             });
@@ -285,13 +334,9 @@ class Player extends EventEmitter {
    * Pick best optional resource based on summaries and rates
    * @param {Object[]} summaries - summary information about options
    * @param {string} summary.resource - resource option is for
-   * @param {int} summary.optionalCount - count player can use of resource
    * @param {int} summary.clockwiseResource - count player can buy
    *     from clockwise player without other optional use
-   * @param {int} summary.clockwiseOptional - count player can buy
-   *     from clockwise player that have other optional use
-   * @param {int} summary.counterClockwiseResource
-   * @param {int} summary.counterClockwiseOptional
+   * @param {int} summary.counterResource
    * @param {int} summary.requiredCount - number of that resource required
    * @param {boolean} summary.isRequired - whether optional resource is
    *     required to meet requirements
@@ -299,7 +344,7 @@ class Player extends EventEmitter {
   costToBuy(summary, rates) {
     let combos = [];
     let maxClockwise = summary.clockwiseResource;
-    let maxCounterClockwise = summary.counterClockwiseResource;
+    let maxCounterClockwise = summary.counterResource;
     for (let i = 0; i <= maxClockwise && i <= summary.requiredCount; i++) {
       if (i + maxCounterClockwise >= summary.requiredCount) {
         combos.push({
@@ -407,7 +452,7 @@ class Player extends EventEmitter {
 
   resourceObject(resourceArray = []) {
     let resources = {withOptions: []};
-    let ensureKey = (object, key) => object[key] = 0;
+    let ensureKey = (object, key) => object[key] ? true : object[key] = 0;
     resourceArray.forEach((resource) => {
       if (resource.includes('/')) {
         resources.withOptions.push(resource.split('/'));
