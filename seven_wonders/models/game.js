@@ -9,6 +9,7 @@ class Game extends EventEmitter {
   constructor(options = {}) {
     super();
     this.creator = options.creator;
+    this.creatorName = options.creatorName;
     this.maxPlayers = options.maxPlayers;
     this.name = options.name;
     this.id = options.id || `game-${Date.now()}`;
@@ -52,6 +53,14 @@ class Game extends EventEmitter {
       player.removeListener('playCard', handlePlayCard)
         .removeListener('buildWonder', handleBuildWonder)
         .removeListener('discard', handleDiscard);
+    });
+  }
+
+  broadcast(data, player) {
+    this.players.forEach(function(p) {
+      if (p !== player) {
+        p.notify(data);
+      }
     });
   }
 
@@ -99,6 +108,8 @@ class Game extends EventEmitter {
     await this.readyPromise;
     if (this.players.length < this.maxPlayers) {
       if (this.players.indexOf(player) === -1) {
+        let data = {name: player.name, messageType: 'newPlayer'};
+        this.broadcast(data, player);
         this.players.push(player);
         this.setPlayerListeners(player);
         if (this.players.length === this.maxPlayers) {
@@ -114,6 +125,7 @@ class Game extends EventEmitter {
     this.state = 'setup';
     let resp = await this.runQuery(this.cypherGetWonderOptions());
     let wonderOptions = [];
+    this.emit('gameStart');
     for (let record of resp.records) {
       if (record) {
         wonderOptions.push({
@@ -131,6 +143,49 @@ class Game extends EventEmitter {
       });
     });
     await this.runQuery(this.cypherSaveState());
+    await this.sendStartInfo();
+  }
+
+  // legacy support for start info -- scrap this later
+  async sendStartInfo() {
+    let resp = await this.runQuery(this.cypherGetStartInfo());
+    let neighborsMap = {};
+    for (let record of resp.records) {
+      neighborsMap[record.get('playerId')] = record.get('neighbors');
+    };
+    let plinfo = this.players.map((player) => {
+      return {
+        cards: [],
+        coins: 3,
+        id: player.id,
+        military: {'1': 0, '3': 0, '5': 0, '-1': 0},
+        name: player.name,
+        wonder: {
+          name: player.wonderOption.wonderName,
+          stage: 0,
+          side: null
+        }
+      };
+    });
+    this.players.forEach((player) => {
+      let data = {
+        coins: 3,
+        leftcards: [],
+        messageType: 'startInfo',
+        military: {'1': 0, '3': 0, '5': 0, '-1': 0},
+        neighbors: neighborsMap[player.id],
+        played: [],
+        plinfo,
+        rejoin: false,
+        rightcards: [],
+        wonder: {
+          name: player.wonderOption.wonderName,
+          stage: 0
+        },
+        wonderSide: null
+      };
+      player.notify(data);
+    });
   }
 
   async getPlayers() {
@@ -639,6 +694,21 @@ class Game extends EventEmitter {
       UNWIND range(0, size(allP) - 1) AS idx
       WITH allP[idx] AS p, allW[idx] AS w
       MERGE (p)<-[:WONDER_FOR]-(w)
+    `;
+    return {params: params, query: query};
+  }
+
+  cypherGetStartInfo() {
+    let params = {
+      gameId: this.id
+    };
+    let query = `
+      // add players to the game and assign wonders
+      MATCH (g:Game {gameId: $gameId})<-[:JOINS]-(p)<-[:WONDER_FOR]-(w)
+      RETURN p.playerId AS playerId,
+        head([(rp)<-[:WONDER_FOR]-(rw)-[:CLOCKWISE]->(w)
+            -[:CLOCKWISE]->(lw)-[:WONDER_FOR]->(lp) | {left: {name: lp.name, id: lp.playerId, resource: "", stage: 0, wonder: lw.name},
+                right: {name: rp.name, id: rp.playerId, resource: "", stage: 0, wonder: rw.name}}]) AS neighbors
     `;
     return {params: params, query: query};
   }

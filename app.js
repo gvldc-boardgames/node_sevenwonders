@@ -11,7 +11,6 @@ server.on('request', app);
 
 server.on('upgrade', function upgrade(req, sock, head) {
   const pathname = url.parse(req.url).pathname;
-  console.log('upgrade', pathname);
   if (pathname === '/seven_wonders') {
     wssSevenWonders.handleUpgrade(req, sock, head, function done(ws) {
       wssSevenWonders.emit('connection', ws, req);
@@ -23,7 +22,6 @@ server.on('upgrade', function upgrade(req, sock, head) {
 
 app.post('/newbot', (req, res) => { 
   new Player()
-  res.send('New bot!');
 });
 
 server.listen(port, () => console.log(`Server listening on ${port}`));

@@ -8,21 +8,45 @@ class Player extends EventEmitter {
   constructor(options = {}) {
     super();
     this.name = options.name;
+    this.ws = options.ws;
     this.id = options.id || `player-${Date.now()}`;
     this.readyPromise = this.login();
     this.once('wonderOption', this.receiveWonderOption);
     this.receiveHand = this.receiveHand.bind(this);
     this.receivePlayersInfo = this.receivePlayersInfo.bind(this);
+    this.handleSocketMessage = this.handleSocketMessage.bind(this);
     this.on('hand', this.receiveHand);
     this.on('playersInfo', this.receivePlayersInfo);
+    if (this.ws) {
+      this.ws.on('message', this.handleSocketMessage);
+    }
   }
 
   async login() {
     let resp = await this.runQuery(this.cypherLogin());
   }
 
+  notify(data) {
+    this.ws.send(JSON.stringify(data));
+  }
+
   receiveWonderOption(wonderOption) {
     this.wonderOption = wonderOption;
+  }
+
+  handleSocketMessage(message) {
+    try {
+      let parsed = JSON.parse(message);
+      // legacy pick side
+      if (parsed.messageType === 'wonderside') {
+        this.chooseWonderSide({
+          wonderName: this.wonderOption.wonderName,
+          side: parsed.value ? 'a' : 'b'
+        });
+      }
+    } catch {
+      this.notify({messageType: 'parseError', errorMessage: 'failed to parse'});
+    }
   }
 
   /**
@@ -33,15 +57,42 @@ class Player extends EventEmitter {
    * @property {string} wonderSide.side - a/b, which side is chosen
    */
   chooseWonderSide(wonderSide) {
+    console.log('about to emit wonder side chosen', wonderSide);
     this.emit('wonderSideChosen', this, wonderSide);
   }
 
   receiveHand(hand) {
     this.hand = hand;
+    this.notify({hand: hand, messageType: 'hand'});
     hand.forEach(card => this.getCombos(card));
   }
 
+  resourceName(resourceKey) {
+    let resourceMap = {
+      L: 'linen',
+      G: 'glass',
+      P: 'paper',
+      S: 'stone',
+      W: 'wood',
+      O: 'ore',
+      C: 'clay'
+    }
+    return resourceMap[resourceKey];
+  }
+
   receivePlayersInfo(playersInfo) {
+    // legacy hack
+    if (this.playersInfo == null) {
+      let leftInfo = playersInfo[playersInfo[this.id].clockwisePlayer];
+      let rightInfo = playersInfo[playersInfo[this.id].counterClockwisePlayer];
+      this.notify({
+        messageType: 'neighborwonders',
+        left: {wonder: leftInfo.wonderName,
+            resource: this.resourceName(leftInfo.wonderResource)},
+        right: {wonder: rightInfo.wonderName,
+            resource: this.resourceName(rightInfo.wonderResource)}
+      });
+    }
     this.playersInfo = playersInfo;
   }
 
