@@ -111,6 +111,15 @@ class Game extends EventEmitter {
         let data = {name: player.name, messageType: 'newPlayer'};
         this.broadcast(data, player);
         this.players.push(player);
+        data = {
+          id: this.id,
+          name: this.name,
+          currentPlayer: player.name,
+          maxPlayers: this.maxPlayers,
+          players: this.players.map(p => p.name),
+          messageType: 'joinGame'
+        };
+        player.notify(data);
         this.setPlayerListeners(player);
         if (this.players.length === this.maxPlayers) {
           await this.wonderPromise;
@@ -329,7 +338,9 @@ class Game extends EventEmitter {
   async getPlayersHands() {
     let resp = await this.runQuery(this.cypherGetHandInfo());
     resp.records.forEach((record) => {
-      this.playersHands[record.get('playerId')] = record.get('hand');
+      let hand = record.get('hand');
+      hand.forEach(card => card.players = card.players.toNumber());
+      this.playersHands[record.get('playerId')] = hand;
     });
   }
 
@@ -355,19 +366,19 @@ class Game extends EventEmitter {
         plays.push({playerId: playerId,
           wonderName: wonderName,
           cardName: play.card.name,
-          players: play.card.players
+          players: neo4j.int(play.card.players)
         });
       } else if (play.type === 'discard') {
         discards.push({playerId: playerId,
           wonderName: wonderName,
           cardName: play.card.name,
-          players: play.card.players
+          players: neo4j.int(play.card.players)
         });
       } else if (play.type === 'wonder') {
         wonders.push({playerId: playerId,
           wonderName: wonderName,
           cardName: play.card.name,
-          players: play.card.players
+          players: neo4j.int(play.card.players)
         });
       } else {
         this.emit('error', 'Unrecognized play type');
@@ -704,7 +715,7 @@ class Game extends EventEmitter {
     };
     let query = `
       // add players to the game and assign wonders
-      MATCH (g:Game {gameId: $gameId})<-[:JOINS]-(p)<-[:WONDER_FOR]-(w)
+      MATCH (g:Game {gameId: $gameId})<-[:JOINS]-(p)<-[:WONDER_FOR]-(w)-[:INSTANCE_IN]->(g)
       RETURN p.playerId AS playerId,
         head([(rp)<-[:WONDER_FOR]-(rw)-[:CLOCKWISE]->(w)
             -[:CLOCKWISE]->(lw)-[:WONDER_FOR]->(lp) | {left: {name: lp.name, id: lp.playerId, resource: "", stage: 0, wonder: lw.name},

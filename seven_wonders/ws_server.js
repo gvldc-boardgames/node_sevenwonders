@@ -69,17 +69,7 @@ wss.on('connection', function(ws) {
       let gameJoined = openGames.filter(game => game.id === parsed.id)[0];
       if (gameJoined != null) {
         game = gameJoined;
-        game.addPlayer(player).then(() => {
-          let data = {
-            id: game.id,
-            name: game.name,
-            currentPlayer: player.name,
-            maxPlayers: game.maxPlayers,
-            players: game.players.map(p => p.name),
-            messageType: 'joinGame'
-          };
-          player.notify(data);
-        });
+        game.addPlayer(player);
       }
     }
   });

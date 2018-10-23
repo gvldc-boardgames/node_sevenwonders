@@ -21,7 +21,8 @@ server.on('upgrade', function upgrade(req, sock, head) {
 });
 
 app.post('/newbot', (req, res) => { 
-  new Player()
+  new Player();
+  res.end('Bot added');
 });
 
 server.listen(port, () => console.log(`Server listening on ${port}`));

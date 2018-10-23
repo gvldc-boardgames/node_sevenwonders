@@ -27,7 +27,9 @@ class Player extends EventEmitter {
   }
 
   notify(data) {
-    this.ws.send(JSON.stringify(data));
+    if (this.ws && this.ws.readyState === 1) {
+      this.ws.send(JSON.stringify(data));
+    }
   }
 
   receiveWonderOption(wonderOption) {
@@ -37,12 +39,9 @@ class Player extends EventEmitter {
   handleSocketMessage(message) {
     try {
       let parsed = JSON.parse(message);
-      // legacy pick side
-      if (parsed.messageType === 'wonderside') {
-        this.chooseWonderSide({
-          wonderName: this.wonderOption.wonderName,
-          side: parsed.value ? 'a' : 'b'
-        });
+      console.log('message received', parsed);
+      if (parsed.messageType === 'wonderSide') {
+        this.chooseWonderSide(parsed);
       }
     } catch {
       this.notify({messageType: 'parseError', errorMessage: 'failed to parse'});
