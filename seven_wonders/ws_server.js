@@ -63,6 +63,8 @@ wss.on('connection', function(ws) {
         };
         openGames.push(game);
         broadcast(data, ws);
+        game.addPlayer(new Player({name: 'test1', id: 'test1'}));
+        game.addPlayer(new Player({name: 'test2', id: 'test2'}));
       });
     } else if (parsed.messageType === 'joinGame'
         && game == null && player != null) {

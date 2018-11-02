@@ -3,7 +3,9 @@ const neo4j = require('neo4j-driver').v1;
 const EventEmitter = require('events');
 const cardHelper = require('./../../helpers/card_helper');
 
-const driver = neo4j.driver('bolt://localhost', neo4j.auth.basic('neo4j','BoardGames'));
+const driver = neo4j.driver('bolt://localhost',
+    neo4j.auth.basic('neo4j','BoardGames'),
+    {disableLosslessIntegers: true});
 
 class Game extends EventEmitter {
   constructor(options = {}) {
@@ -70,11 +72,11 @@ class Game extends EventEmitter {
     let gameInfo = resp.records[0];
     if (gameInfo && gameInfo.get('gameType') === this.gameType) {
       if (gameInfo.get('state') === 'new') {
-        this.maxPlayers = gameInfo.get('maxPlayers').toNumber();
+        this.maxPlayers = gameInfo.get('maxPlayers');
         if (gameInfo.get('currentPlayers') > 0)
           await this.getPlayers();
-        this.age = gameInfo.get('age').toNumber();
-        this.round = gameInfo.get('round').toNumber();
+        this.age = gameInfo.get('age');
+        this.round = gameInfo.get('round');
         this.wonderPromise = this.dealWonders();
         this.cardPromise = this.wonderPromise.then(() => {
           this.dealCards();
@@ -108,7 +110,7 @@ class Game extends EventEmitter {
     await this.readyPromise;
     if (this.players.length < this.maxPlayers) {
       if (this.players.indexOf(player) === -1) {
-        let data = {name: player.name, messageType: 'newPlayer'};
+        let data = {name: player.name, id: player.id, messageType: 'newPlayer'};
         this.broadcast(data, player);
         this.players.push(player);
         data = {
@@ -116,7 +118,7 @@ class Game extends EventEmitter {
           name: this.name,
           currentPlayer: player.name,
           maxPlayers: this.maxPlayers,
-          players: this.players.map(p => p.name),
+          players: this.players.map(p => {return {name: p.name, id: p.id}}),
           messageType: 'joinGame'
         };
         player.notify(data);
@@ -230,7 +232,7 @@ class Game extends EventEmitter {
 
   async cardsDealt() {
     let result = await this.runQuery(this.cypherCountCards());
-    return result.records[0].get('cardsDealt').toNumber() != 0;
+    return result.records[0].get('cardsDealt') != 0;
   }
 
   async dealAge(age) {
@@ -321,8 +323,8 @@ class Game extends EventEmitter {
         wonderName: record.get('wonderName'),
         wonderSide: record.get('wonderSide'),
         wonderResource: record.get('wonderResource'),
-        coins: record.get('coins').toNumber(),
-        military: record.get('military').toNumber(),
+        coins: record.get('coins'),
+        military: record.get('military'),
         stagesInfo: record.get('stagesInfo'),
         clockwisePlayer: record.get('clockwisePlayer'),
         counterClockwisePlayer: record.get('counterClockwisePlayer')
@@ -339,7 +341,6 @@ class Game extends EventEmitter {
     let resp = await this.runQuery(this.cypherGetHandInfo());
     resp.records.forEach((record) => {
       let hand = record.get('hand');
-      hand.forEach(card => card.players = card.players.toNumber());
       this.playersHands[record.get('playerId')] = hand;
     });
   }

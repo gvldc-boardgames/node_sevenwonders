@@ -2,7 +2,9 @@
 const neo4j = require('neo4j-driver').v1;
 const EventEmitter = require('events');
 
-const driver = neo4j.driver('bolt://localhost', neo4j.auth.basic('neo4j','BoardGames'));
+const driver = neo4j.driver('bolt://localhost',
+    neo4j.auth.basic('neo4j','BoardGames'),
+    {disableLosslessIntegers: true});
 
 class Player extends EventEmitter {
   constructor(options = {}) {
@@ -34,6 +36,7 @@ class Player extends EventEmitter {
 
   receiveWonderOption(wonderOption) {
     this.wonderOption = wonderOption;
+    this.notify({wonderOption, messageType: 'wonderOption'});
   }
 
   handleSocketMessage(message) {
