@@ -66,7 +66,10 @@ class Player extends EventEmitter {
   receiveHand(hand) {
     this.hand = hand;
     this.notify({hand: hand, messageType: 'hand'});
-    hand.forEach(card => this.getCombos(card));
+    hand.forEach(card => setImmediate(() => {
+      this.getCombos(card);
+      this.notify({messageType: 'playCombos', card});
+    }));
   }
 
   resourceName(resourceKey) {

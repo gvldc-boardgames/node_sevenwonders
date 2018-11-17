@@ -13,6 +13,14 @@ const broadcast = function(data, ws) {
     }
   });
 }
+const setDebug = function(game) {
+  let p1 = new Player({name: 'test1', id: 'test1'});
+  let p2 = new Player({name: 'test2', id: 'test2'});
+  p1.once('wonderOption', (opt) => p1.chooseWonderSide({wonderName: opt.wonderName, side: 'a'}));
+  p2.once('wonderOption', (opt) => p2.chooseWonderSide({wonderName: opt.wonderName, side: 'a'}));
+  game.addPlayer(p1);
+  game.addPlayer(p2);
+}
 
 wss.on('connection', function(ws) {
   let player;
@@ -63,8 +71,7 @@ wss.on('connection', function(ws) {
         };
         openGames.push(game);
         broadcast(data, ws);
-        game.addPlayer(new Player({name: 'test1', id: 'test1'}));
-        game.addPlayer(new Player({name: 'test2', id: 'test2'}));
+        setImmediate(() => setDebug(game));
       });
     } else if (parsed.messageType === 'joinGame'
         && game == null && player != null) {

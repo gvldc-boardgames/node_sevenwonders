@@ -24,6 +24,7 @@ class Game extends EventEmitter {
     this.wonderSides = {};
     this.playersInfo = {};
     this.playersHands = {};
+    this.playOrder = [];
     this.setListeners();
     this.readyPromise = this.checkState();
   }
@@ -134,6 +135,7 @@ class Game extends EventEmitter {
 
   async startGame() {
     this.state = 'setup';
+    this.getPlayOrder();
     let resp = await this.runQuery(this.cypherGetWonderOptions());
     let wonderOptions = [];
     this.emit('gameStart');
@@ -270,15 +272,27 @@ class Game extends EventEmitter {
   async setWonderSide(player, wonderSide) {
     console.log('setWonderSide', player, wonderSide);
     if (this.wonderSides[player.id] == null) {
-      if (this.wonderOptions.filter((option) => {
-        return option.playerId === player.id && option.wonderName === wonderSide.wonderName
-      }).length > 0) {
+      let wonderOption = this.wonderOptions.filter((option) => {
+        return option.playerId === player.id &&
+              option.wonderName === wonderSide.wonderName;
+      })[0];
+      if (wonderOption != null) {
         // player can actually choose this wonder
+        let chosenSide = wonderOption.wonderSides
+            .filter(s => s.side === wonderSide.side)[0];
+        let wonder = {
+          resource: chosenSide.resource,
+          stages: chosenSide.stages,
+          wonderName: wonderSide.wonderName,
+          side: wonderSide.side
+        };          
         this.wonderSides[player.id] = {
           playerId: player.id,
           wonderName: wonderSide.wonderName,
           side: wonderSide.side
         };
+        this.broadcast({wonder, playerId: player.id,
+            messageType: 'sideChosen'});
       } else {
         console.log('wonder not for you!');
         // player tried to play a wonder he doesn't have!
@@ -334,6 +348,18 @@ class Game extends EventEmitter {
     resp = await this.runQuery(this.cypherGetPlayedCards());
     resp.records.forEach((record) => {
       this.playersInfo[record.get('playerId')].cardsPlayed = record.get('cards');
+    });
+  }
+
+  async getPlayOrder() {
+    let resp = await this.runQuery(this.cypherGetPlayOrder());
+    this.playOrder = [];
+    resp.records.forEach((record) => {
+      this.playOrder.push(record.get('playerData'));
+    });
+    this.broadcast({playOrder: this.playOrder,
+      messageType: 'playOrder',
+      direction: this.age === 2 ? 'right' : 'left'
     });
   }
 
@@ -710,6 +736,30 @@ class Game extends EventEmitter {
     return {params: params, query: query};
   }
 
+  cypherGetPlayOrder() {
+    let params = {
+      gameId: this.id,
+      creator: this.creator
+    };
+    let query = `
+      // get players ordered by clockwise distance from creator
+      MATCH (g:Game {gameId: $gameId})<-[:JOINS]-(c:Player {playerId: $creator})
+          <-[:WONDER_FOR]-(cw)-[:INSTANCE_IN]->(g)
+      WITH g, c, cw
+      MATCH (p)-[:JOINS]->(g), (p)<-[:WONDER_FOR]-(w)-[:INSTANCE_IN]->(g),
+        path=(cw)-[:CLOCKWISE*0..7]->(w)
+      WITH p, w, min(length(path)) as place
+      RETURN {
+        wonderName: w.name,
+        playerName: p.name,
+        playerId: p.playerId,
+        place: place,
+        wonderSide: head([(w)-[:CHOOSES]->(s) | s.side])
+      } AS playerData ORDER BY place DESC
+    `;
+    return {params, query};
+  }
+
   cypherGetStartInfo() {
     let params = {
       gameId: this.id
@@ -874,6 +924,7 @@ class Game extends EventEmitter {
             value: free.value
           }) 
         END AS freeInfo
+      OPTIONAL MATCH (freeFrom)-[:FREE_BUILDS]->(card)
       RETURN g.gameId AS gameId,
         p.playerId AS playerId,
         collect({
@@ -882,6 +933,7 @@ class Game extends EventEmitter {
           value: card.value,
           cost: card.cost,
           freeBuilds: freeInfo,
+          freeFrom: freeFrom.name,
           players: card.players,
           isFree: CASE
             WHEN (card)<-[:FREE_BUILDS]-()<-[:PLAYS]-(w) THEN true
