@@ -1,0 +1,50 @@
+﻿name,players,isResource,color,cost,value,freeFrom
+Sawmill,3,true,brown,1,WW,null
+Sawmill,4,true,brown,1,WW,null
+Quarry,3,true,brown,1,SS,null
+Quarry,4,true,brown,1,SS,null
+Brickyard,3,true,brown,1,CC,null
+Brickyard,4,true,brown,1,CC,null
+Foundry,3,true,brown,1,OO,null
+Foundry,4,true,brown,1,OO,null
+Loom,3,true,grey,null,L,null
+Loom,5,true,grey,null,L,null
+Glassworks,3,true,grey,null,G,null
+Glassworks,5,true,grey,null,G,null
+Press,3,true,grey,null,P,null
+Press,5,true,grey,null,P,null
+Aqueduct,3,null,blue,SSS,5,Baths
+Aqueduct,7,null,blue,SSS,5,Baths
+Temple,3,null,blue,WCG,3,Altar
+Temple,6,null,blue,WCG,3,Altar
+Statue,3,null,blue,WOO,4,Theater
+Statue,7,null,blue,WOO,4,Theater
+Courthouse,3,null,blue,CCL,4,Scriptorium
+Courthouse,5,null,blue,CCL,4,Scriptorium
+Forum,3,true,yellow,CC,L/G/P,East Trading Post
+Forum,6,true,yellow,CC,L/G/P,East Trading Post
+Forum,7,true,yellow,CC,L/G/P,East Trading Post
+Caravansery,3,true,yellow,WW,C/S/O/W,Marketplace
+Caravansery,5,true,yellow,WW,C/S/O/W,Marketplace
+Caravansery,6,true,yellow,WW,C/S/O/W,Marketplace
+Vineyard,3,null,yellow,null,<V> brown 1,null
+Vineyard,6,null,yellow,null,<V> brown 1,null
+Bazar,4,null,yellow,null,<V> grey 2,null
+Bazar,7,null,yellow,null,<V> grey 2,null
+Walls,3,null,red,SSS,2,null
+Walls,7,null,red,SSS,2,null
+Training Ground,4,null,red,WOO,2,null
+Training Ground,6,null,red,WOO,2,null
+Training Ground,7,null,red,WOO,2,null
+Stables,3,null,red,OCW,2,Apothecary
+Stables,5,null,red,OCW,2,Apothecary
+Archery Range,3,null,red,WWO,2,Workshop
+Archery Range,6,null,red,WWO,2,Workshop
+Dispensary,3,null,green,OOG,1,Apothecary
+Dispensary,4,null,green,OOG,1,Apothecary
+Laboratory,3,null,green,CCP,2,Workshop
+Laboratory,5,null,green,CCP,2,Workshop
+Library,3,null,green,SSL,3,Scriptorium
+Library,6,null,green,SSL,3,Scriptorium
+School,3,null,green,WP,3,null
+School,7,null,green,WP,3,null

@@ -10,6 +10,7 @@ const wssSevenWonders = require('./seven_wonders/ws_server').wss;
 server.on('request', app);
 
 server.on('upgrade', function upgrade(req, sock, head) {
+  console.log('upgrade', req.url);
   const pathname = url.parse(req.url).pathname;
   if (pathname === '/seven_wonders') {
     wssSevenWonders.handleUpgrade(req, sock, head, function done(ws) {

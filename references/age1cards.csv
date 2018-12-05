@@ -1,0 +1,50 @@
+﻿name,players,isResource,color,cost,value,freeFrom
+Lumber Yard,3,true,brown,null,W,null
+Lumber Yard,4,true,brown,null,W,null
+Stone Pit,3,true,brown,null,S,null
+Stone Pit,5,true,brown,null,S,null
+Clay Pool,3,true,brown,null,C,null
+Clay Pool,5,true,brown,null,C,null
+Ore Vein,3,true,brown,null,O,null
+Ore Vein,4,true,brown,null,O,null
+Tree Farm,6,true,brown,1,W/C,null
+Excavation,4,true,brown,1,S/C,null
+Clay Pit,3,true,brown,1,C/O,null
+Timber Yard,3,true,brown,1,S/W,null
+Forest Cave,5,true,brown,1,W/O,null
+Mine,6,true,brown,1,O/S,null
+Loom,3,true,grey,null,L,null
+Loom,6,true,grey,null,L,null
+Glassworks,3,true,grey,null,G,null
+Glassworks,6,true,grey,null,G,null
+Press,3,true,grey,null,P,null
+Press,6,true,grey,null,P,null
+Pawnshop,4,null,blue,null,3,null
+Pawnshop,7,null,blue,null,3,null
+Baths,3,null,blue,S,3,null
+Baths,7,null,blue,S,3,null
+Altar,3,null,blue,null,2,null
+Altar,5,null,blue,null,2,null
+Theater,3,null,blue,null,2,null
+Theater,6,null,blue,null,2,null
+Tavern,4,null,yellow,null,5,null
+Tavern,5,null,yellow,null,5,null
+Tavern,7,null,yellow,null,5,null
+East Trading Post,3,null,yellow,null,> CSOW,null
+East Trading Post,7,null,yellow,null,> CSOW,null
+West Trading Post,3,null,yellow,null,< CSOW,null
+West Trading Post,7,null,yellow,null,< CSOW,null
+Marketplace,3,null,yellow,null,<> LGP,null
+Marketplace,6,null,yellow,null,<> LGP,null
+Stockade,3,null,red,W,1,null
+Stockade,7,null,red,W,1,null
+Barracks,3,null,red,O,1,null
+Barracks,5,null,red,O,1,null
+Guard Tower,3,null,red,C,1,null
+Guard Tower,4,null,red,C,1,null
+Apothecary,3,null,green,L,1,null
+Apothecary,5,null,green,L,1,null
+Workshop,3,null,green,G,2, 
+Workshop,7,null,green,G,2, 
+Scriptorium,3,null,green,P,3, 
+Scriptorium,4,null,green,P,3, 
