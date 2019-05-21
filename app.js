@@ -21,6 +21,7 @@ server.on('upgrade', function upgrade(req, sock, head) {
   }
 });
 
+app.get('/test', (req, res) => {console.log('testing'); res.send('ok'); });
 app.post('/newbot', (req, res) => { 
   new Player();
   res.end('Bot added');
