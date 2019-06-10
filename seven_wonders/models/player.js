@@ -2,7 +2,7 @@
 const neo4j = require('neo4j-driver').v1;
 const EventEmitter = require('events');
 
-const driver = neo4j.driver('bolt://localhost',
+const driver = neo4j.driver(process.env.NEO4J_BOLT,
     neo4j.auth.basic('neo4j','BoardGames'),
     {disableLosslessIntegers: true});
 
