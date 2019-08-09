@@ -31,7 +31,7 @@ class Game extends EventEmitter {
 
   setListeners() {
     this.on('error', function(err) {
-      console.log('error in game!', err, this);
+      console.log('error in game!', err);
     }).on('exit', function(data) {
       driver.close();
     });
@@ -270,7 +270,7 @@ class Game extends EventEmitter {
   }
 
   async setWonderSide(player, wonderSide) {
-    console.log('setWonderSide', player, wonderSide);
+    console.log('setWonderSide', player.id, player.name, wonderSide.wonderName, wonderSide.side);
     if (this.wonderSides[player.id] == null) {
       let wonderOption = this.wonderOptions.filter((option) => {
         return option.playerId === player.id &&
@@ -442,7 +442,7 @@ class Game extends EventEmitter {
   }
 
   handlePlayCard(player, card) {
-    console.log('handle play card', player.id, card);
+    console.log('handle play card', player.id, card.name, card.players);
     // todo - ensure player can actually play the card
     this.pendingPlays[player.id] = {
       type: 'play',
@@ -498,7 +498,7 @@ class Game extends EventEmitter {
   }
 
   handleBuildWonder(player, card) {
-    console.log('handle build wonder', player.id, card);
+    console.log('handle build wonder', player.id, card.name, card.players);
     // todo - ensure player can actually play the card
     this.pendingPlays[player.id] = {
       type: 'wonder',
@@ -511,7 +511,7 @@ class Game extends EventEmitter {
   }
 
   handleDiscard(player, card) {
-    console.log('handle discad', player.id, card);
+    console.log('handle discad', player.id, card.name, card.players);
     // todo - ensure player can actually play the card
     this.pendingPlays[player.id] = {
       type: 'discard',
