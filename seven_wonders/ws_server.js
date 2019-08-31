@@ -18,6 +18,8 @@ const setDebug = function(game) {
   let p2 = new Player({name: 'test2', id: 'test2'});
   p1.once('wonderOption', (opt) => p1.chooseWonderSide({wonderName: opt.wonderName, side: 'a'}));
   p2.once('wonderOption', (opt) => p2.chooseWonderSide({wonderName: opt.wonderName, side: 'a'}));
+  p1.on('hand', (hand) => p1.discardCard(hand[0]));
+  p2.on('hand', (hand) => p2.discardCard(hand[0]));
   game.addPlayer(p1);
   game.addPlayer(p2);
 }

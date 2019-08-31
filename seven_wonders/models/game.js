@@ -40,8 +40,8 @@ class Game extends EventEmitter {
   setPlayerListeners(player) {
     // set up variables to use for listeners bound to "this" so they can be removed later
     // and still have proper scope
-    const handlePlayCard = (player, card) => this.handlePlayCard(player, card);
-    const handleBuildWonder = (player, card) => this.handleBuildWonder(player, card);
+    const handlePlayCard = (player, card, cost) => this.handlePlayCard(player, card, cost);
+    const handleBuildWonder = (player, card, cost) => this.handleBuildWonder(player, card, cost);
     const handleDiscard = (player, card) => this.handleDiscard(player, card);
     
     // set up listeners for events from player
@@ -393,7 +393,12 @@ class Game extends EventEmitter {
         plays.push({playerId: playerId,
           wonderName: wonderName,
           cardName: play.card.name,
-          players: neo4j.int(play.card.players)
+          players: neo4j.int(play.card.players),
+          cost: {
+            self: neo4j.int(play.cost.self.cost),
+            clockwise: neo4j.int(play.cost.clockwise.cost),
+            counterClockwise: neo4j.int(play.cost.counterClockwise.cost)
+          }
         });
       } else if (play.type === 'discard') {
         discards.push({playerId: playerId,
@@ -405,7 +410,12 @@ class Game extends EventEmitter {
         wonders.push({playerId: playerId,
           wonderName: wonderName,
           cardName: play.card.name,
-          players: neo4j.int(play.card.players)
+          players: neo4j.int(play.card.players),
+          cost: {
+            self: neo4j.int(play.cost.self.cost),
+            clockwise: neo4j.int(play.cost.clockwise.cost),
+            counterClockwise: neo4j.int(play.cost.counterClockwise.cost)
+          }
         });
       } else {
         this.emit('error', 'Unrecognized play type');
@@ -441,16 +451,18 @@ class Game extends EventEmitter {
       this.endRound();
   }
 
-  handlePlayCard(player, card) {
+  handlePlayCard(player, card, cost) {
     console.log('handle play card', player.id, card.name, card.players);
     // todo - ensure player can actually play the card
     this.pendingPlays[player.id] = {
       type: 'play',
-      card: card
+      card: card,
+      cost
     };
     this.checkEndOfRound();
   }
 
+  // NOTE: this is a WIP method and not finished
   canPlayCard(player, card) {
     if (this.playersInfo[player.id].cardsPlayed != null && 
         this.playersInfo[player.id].cardsPlayed.map(card => card.name).indexOf(card.name) != -1) {
@@ -497,12 +509,13 @@ class Game extends EventEmitter {
     return resources;
   }
 
-  handleBuildWonder(player, card) {
+  handleBuildWonder(player, card, cost) {
     console.log('handle build wonder', player.id, card.name, card.players);
     // todo - ensure player can actually play the card
     this.pendingPlays[player.id] = {
       type: 'wonder',
-      card: card
+      card: card,
+      cost
     };
     this.checkEndOfRound();
   }
@@ -634,6 +647,7 @@ class Game extends EventEmitter {
           score.buildings = 0,
           score.other = 0
       MERGE (wi)-[:INSTANCE_IN]->(g)
+      MERGE (g)-[:PAYS {value: 3}]->(score)
       WITH wi, w
       MATCH (w)-[:HAS_SIDE]->(side)-[:HAS_STAGE]->(stage)
       MERGE (wi)-[:HAS_SIDE]->(sideIns:WonderSide {side: side.side})
@@ -802,6 +816,7 @@ class Game extends EventEmitter {
           coins: sCoins,
           military: sMil
         }) AS stagesInfo
+        ORDER BY side.side
       RETURN playerId,
         playerName,
         wonderName,
@@ -951,15 +966,22 @@ class Game extends EventEmitter {
       cards: cards,
       age: stringAge
     };
+    console.log('plays', cards);
     let query = `
       // save chosen plays
       MATCH (g:Game {gameId: $gameId})-[:HAS_AGE]->(a {age: $age})
       UNWIND $cards AS playInfo
       MATCH (g)<-[:JOINS]-({playerId: playInfo.playerId})<-[:WONDER_FOR]-(w {name: playInfo.wonderName}),
         (a)-[:HAS_HAND]->(hand)-[:BELONGS_TO]->(w),
-        (hand)<-[ih:IN_HAND]-(card:${stringAge}CardInstance {players: playInfo.players, name: playInfo.cardName, gameId: $gameId})
+        (hand)<-[ih:IN_HAND]-(card:${stringAge}CardInstance {players: playInfo.players, name: playInfo.cardName, gameId: $gameId}),
+        (cScore)<-[:SCORES]-()<-[:CLOCKWISE]-(w)<-[:CLOCKWISE]-()-[:SCORES]->(ccScore),
+        (w)-[:SCORES]->(myScore)
       MERGE (w)-[:PLAYS]->(card)
       DELETE ih
+      // use foreach and case to figure out if need to pay out
+      FOREACH (unusedVariable IN CASE WHEN playInfo.cost.self > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.self}]->(g) SET myScore.coins = myScore.coins - playInfo.cost.self)
+      FOREACH (unusedVariable IN CASE WHEN playInfo.cost.clockwise > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.clockwise}]->(cScore) SET myScore.coins = myScore.coins - playInfo.cost.clockwise, cScore.coins = cScore.coins + playInfo.cost.clockwise)
+      FOREACH (unusedVariable IN CASE WHEN playInfo.cost.counterClockwise > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.counterClockwise}]->(ccScore) SET myScore.coins = myScore.coins - playInfo.cost.counterClockwise, ccScore.coins = ccScore.coins + playInfo.cost.counterClockwise)
     `;
     return {params: params, query: query};
   }
@@ -977,13 +999,19 @@ class Game extends EventEmitter {
       UNWIND $cards AS playInfo
       MATCH (g)<-[:JOINS]-({playerId: playInfo.playerId})<-[:WONDER_FOR]-(w {name: playInfo.wonderName})-[:CHOOSES]->()-[:HAS_STAGE]->(stage),
         (a)-[:HAS_HAND]->(hand)-[:BELONGS_TO]->(w)-[:INSTANCE_IN]->(g),
-        (hand)<-[ih:IN_HAND]-(card:${stringAge}CardInstance {players: playInfo.players, name: playInfo.cardName, gameId: $gameId})
+        (hand)<-[ih:IN_HAND]-(card:${stringAge}CardInstance {players: playInfo.players, name: playInfo.cardName, gameId: $gameId}),
+        (cScore)<-[:SCORES]-()<-[:CLOCKWISE]-(w)<-[:CLOCKWISE]-()-[:SCORES]->(ccScore),
+        (w)-[:SCORES]->(myScore)
       WHERE NOT (stage)<-[:BUILDS]-()
-      WITH ih, stage, card, playInfo ORDER BY stage.stage
-      WITH ih, card, playInfo, collect(stage) AS stages
-      WITH ih, card, playInfo, head(stages) AS stage
+      WITH ih, stage, card, playInfo, myScore, g, cScore, ccScore ORDER BY stage.stage
+      WITH ih, card, playInfo, myScore, g, cScore, ccScore, collect(stage) AS stages
+      WITH ih, card, playInfo, myScore, g, cScore, ccScore, head(stages) AS stage
       MERGE (stage)<-[:BUILDS]-(card)
       DELETE ih
+      // use foreach and case to figure out if need to pay out
+      FOREACH (unusedVariable IN CASE WHEN playInfo.cost.self > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.self}]->(g) SET myScore.coins = myScore.coins - playInfo.cost.self)
+      FOREACH (unusedVariable IN CASE WHEN playInfo.cost.clockwise > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.clockwise}]->(cScore) SET myScore.coins = myScore.coins - playInfo.cost.clockwise, cScore.coins = cScore.coins + playInfo.cost.clockwise)
+      FOREACH (unusedVariable IN CASE WHEN playInfo.cost.counterClockwise > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.counterClockwise}]->(ccScore) SET myScore.coins = myScore.coins - playInfo.cost.counterClockwise, ccScore.coins = ccScore.coins + playInfo.cost.counterClockwise)
     `;
     return {params: params, query: query};
   }
@@ -1004,6 +1032,7 @@ class Game extends EventEmitter {
         (hand)<-[ih:IN_HAND]-(card:${stringAge}CardInstance {players: playInfo.players, name: playInfo.cardName, gameId: $gameId})
       MERGE (w)-[:DISCARDS]->(card)
       DELETE ih
+      CREATE (g)-[:PAYS {value: 3}]->(score)
       SET score.coins = score.coins + 3
     `;
     return {params: params, query: query};

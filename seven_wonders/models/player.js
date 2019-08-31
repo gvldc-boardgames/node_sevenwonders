@@ -11,6 +11,7 @@ class Player extends EventEmitter {
     super();
     this.name = options.name;
     this.ws = options.ws;
+    this.canPlay = true;
     this.id = options.id || `player-${Date.now()}`;
     this.readyPromise = this.login();
     this.once('wonderOption', this.receiveWonderOption);
@@ -45,6 +46,12 @@ class Player extends EventEmitter {
       console.log('message received', parsed);
       if (parsed.messageType === 'wonderSide') {
         this.chooseWonderSide(parsed);
+      } else if (parsed.messageType === 'playCard') {
+        this.playCard(parsed);
+      } else if (parsed.messageType === 'discardCard') {
+        this.discardCard(parsed.card);
+      } else if (parsed.messageType === 'buildWonder') {
+        this.buildWonder(parsed);
       }
     } catch {
       this.notify({messageType: 'parseError', errorMessage: 'failed to parse'});
@@ -59,17 +66,40 @@ class Player extends EventEmitter {
    * @property {string} wonderSide.side - a/b, which side is chosen
    */
   chooseWonderSide(wonderSide) {
-    console.log('about to emit wonder side chosen', wonderSide);
-    this.emit('wonderSideChosen', this, wonderSide);
+    if (this.wonder == null && wonderSide.wonderName === this.wonderOption.wonderName) {
+      console.log('about to emit wonder side chosen', wonderSide);
+      this.wonder = {wonderName: wonderSide.wonderName, ...this.wonderOption.wonderSides.filter(s => s.side === wonderSide.side)[0]};
+      this.emit('wonderSideChosen', this, wonderSide);
+    }
   }
 
   receiveHand(hand) {
     this.hand = hand;
+    this.canPlay = true;
     this.notify({hand: hand, messageType: 'hand'});
     hand.forEach(card => setImmediate(() => {
       this.getCombos(card);
       this.notify({messageType: 'playCombos', card});
     }));
+    this.getWonderCombos();
+  }
+
+  getWonderCombos() {
+    if (this.wonder == null) {
+      return;
+    } else {
+      const nextStage = this.wonder.stages.filter(s => !s.isBuilt)[0];
+      if (nextStage == null) {
+        this.notify({messageType: 'wonderCombos', combos: []});
+      } else {
+        const requirements = this.resourceObject(nextStage.cost.split(''));
+        const playerResources = this.getMyResources();
+        Object.keys(requirements).filter(key => key.length !== 1)
+            .forEach(key => delete requirements[key]);
+        const combos = this.getAllCombos(requirements, playerResources);
+        this.notify({messageType: 'wonderCombos', combos});
+      }
+    }
   }
 
   resourceName(resourceKey) {
@@ -99,10 +129,17 @@ class Player extends EventEmitter {
       });
     }
     this.playersInfo = playersInfo;
+    this.notify({
+      messageType: 'playersInfo',
+      playersInfo
+    });
   }
 
-  playCard(card) {
-    this.emit('playCard', this, card);
+  playCard({card, clockwise, counterClockwise, self}) {
+    if (this.canPlay) {
+      this.canPlay = false;
+      this.emit('playCard', this, card, {clockwise, counterClockwise, self});
+    }
   }
 
   getCombos(card) {
@@ -120,13 +157,20 @@ class Player extends EventEmitter {
       ];
       return true;
     } else if (!isNaN(card.cost)) {
-      card.playCombos = [
-        {
-          clockwise: {resources: [], cost: 0},
-          counterClockwise: {resources: [], cost: 0},
-          self: {resources: [], cost: parseInt(card.cost)}
-        }
-      ];
+      // TODO make sure can pay
+      if (parseInt(card.cost) <= this.playersInfo[this.id].coins) {
+        card.playCombos = [
+          {
+            clockwise: {resources: [], cost: 0},
+            counterClockwise: {resources: [], cost: 0},
+            self: {resources: [], cost: parseInt(card.cost)}
+          }
+        ];
+        return true;
+      } else {
+        card.playCombos = [];
+        return false;
+      }
     } else {
       let requirements = this.resourceObject(card.cost.split(''));
       Object.keys(requirements).filter(key => key.length !== 1)
@@ -227,7 +271,7 @@ class Player extends EventEmitter {
         if (requirements[res]) {
           buyable.clockwise = 
               this.applyNeighborOption(requirements, res, buyable.clockwise);
-          this.recursiveResourceBuy(requirements, buyable);
+          return this.recursiveResourceBuy(requirements, buyable);
         }
       }
     } else if (buyable.counterClockwise.withOptions.length > 0) {
@@ -240,7 +284,7 @@ class Player extends EventEmitter {
               res,
               buyable.counterClockwise
           );
-          this.recursiveResourceBuy(requirements, buyable);
+          return this.recursiveResourceBuy(requirements, buyable);
         }
       }
     } else {
@@ -566,12 +610,22 @@ class Player extends EventEmitter {
     return resourceObject;
   }
 
-  discard(card) {
-    this.emit('discard', this, card);
+  discardCard(card) {
+    if (this.canPlay) {
+      this.canPlay = false;
+      this.emit('discard', this, card);
+    }
   }
 
-  buildWonder(card) {
-    this.emit('buildWonder', this, card);
+  buildWonder({card, clockwise, counterClockwise, self}) {
+    if (this.canPlay) {
+      const nextStage = this.wonder && this.wonder.stages.filter(s => !s.isBuilt)[0];
+      if (nextStage) {
+        nextStage.isBuilt = true;
+        this.canPlay = false;
+        this.emit('buildWonder', this, card, {clockwise, counterClockwise, self});
+      }
+    }
   }
 
   // connect to database and run query
