@@ -359,7 +359,7 @@ class Game extends EventEmitter {
     });
     this.broadcast({playOrder: this.playOrder,
       messageType: 'playOrder',
-      direction: this.age === 2 ? 'right' : 'left'
+      direction: this.age === 2 ? 'counterClockwise' : 'clockwise'
     });
   }
 
@@ -393,7 +393,7 @@ class Game extends EventEmitter {
         plays.push({playerId: playerId,
           wonderName: wonderName,
           cardName: play.card.name,
-          players: neo4j.int(play.card.players),
+          players: play.card.players === 'guild' ? play.card.players : neo4j.int(play.card.players),
           cost: {
             self: neo4j.int(play.cost.self.cost),
             clockwise: neo4j.int(play.cost.clockwise.cost),
@@ -404,13 +404,13 @@ class Game extends EventEmitter {
         discards.push({playerId: playerId,
           wonderName: wonderName,
           cardName: play.card.name,
-          players: neo4j.int(play.card.players)
+          players: play.card.players === 'guild' ? play.card.players : neo4j.int(play.card.players),
         });
       } else if (play.type === 'wonder') {
         wonders.push({playerId: playerId,
           wonderName: wonderName,
           cardName: play.card.name,
-          players: neo4j.int(play.card.players),
+          players: play.card.players === 'guild' ? play.card.players : neo4j.int(play.card.players),
           cost: {
             self: neo4j.int(play.cost.self.cost),
             clockwise: neo4j.int(play.cost.clockwise.cost),
@@ -424,8 +424,6 @@ class Game extends EventEmitter {
     await this.runQuery(this.cypherPlayCards(plays));
     await this.runQuery(this.cypherDiscard(discards));
     await this.runQuery(this.cypherBuildWonders(wonders));
-    // todo - pay people as needed!
-    // N.B. discard handles money for discarding
   }
 
   async rotateHands() {
@@ -659,6 +657,7 @@ class Game extends EventEmitter {
       WITH instances, collect([idx, idx + 1]) + [[size(instances) - 1, 0]] AS pairs
       UNWIND pairs AS pair
       WITH instances[pair[0]] AS wi1, instances[pair[1]] AS wi2
+      // clockwise means wi1 is clockwise of wi2 - if wi2 passes clockwise it goes to wi1
       MERGE (wi1)-[:CLOCKWISE]->(wi2)
     `;
     return {params: params, query: query};
@@ -761,6 +760,7 @@ class Game extends EventEmitter {
           <-[:WONDER_FOR]-(cw)-[:INSTANCE_IN]->(g)
       WITH g, c, cw
       MATCH (p)-[:JOINS]->(g), (p)<-[:WONDER_FOR]-(w)-[:INSTANCE_IN]->(g),
+        // order by path means creator at first position, then player that creator is clockwise from
         path=(cw)-[:CLOCKWISE*0..7]->(w)
       WITH p, w, min(length(path)) as place
       RETURN {
@@ -769,7 +769,7 @@ class Game extends EventEmitter {
         playerId: p.playerId,
         place: place,
         wonderSide: head([(w)-[:CHOOSES]->(s) | s.side])
-      } AS playerData ORDER BY place DESC
+      } AS playerData ORDER BY place
     `;
     return {params, query};
   }
@@ -910,6 +910,7 @@ class Game extends EventEmitter {
         collect({
           name: c.name,
           color: c.color,
+          type: c.type,
           value: c.value,
           cost: c.cost,
           isResource: c.isResource,
@@ -1047,6 +1048,7 @@ class Game extends EventEmitter {
     let query = `
       // rotate hands based on age
       MATCH (:Game {gameId: $gameId})-[:HAS_AGE]->({age: $age})-[:HAS_HAND]->(hand)-[bt:BELONGS_TO]->(w),
+        // in age 2 cards go clockwise, so next wonder is the one with a :CLOCKWISE pointing to current wonder
         (w)${this.age === 2 ? '<' : ''}-[:CLOCKWISE]-${this.age === 2 ? '' : '>'}(nextW)
       DELETE bt
       MERGE (hand)-[:BELONGS_TO]->(nextW)
