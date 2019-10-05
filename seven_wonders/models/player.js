@@ -138,7 +138,9 @@ class Player extends EventEmitter {
   playCard({card, clockwise, counterClockwise, self}) {
     if (this.canPlay) {
       this.canPlay = false;
-      this.emit('playCard', this, card, {clockwise, counterClockwise, self});
+      card = this.hand.filter(c => c.name === card.name && c.players === card.players)[0];
+      if (card != null)
+        this.emit('playCard', this, card, {clockwise, counterClockwise, self});
     }
   }
 

@@ -383,6 +383,52 @@ class Game extends EventEmitter {
     }
   }
 
+  async checkCoins(plays) {
+    const digitCheck = /\d/;
+    const allDigits = /^\d+$/;
+    const coinsAndVP = /\(\d+\)/;
+    let valuablePlays = plays.filter((play) => {
+      return play.cardColor === 'yellow' && digitCheck.test(play.cardValue);
+    });
+    if (valuablePlays.length > 0) {
+      const cyphers = valuablePlays.map((play) => {
+        let cypher = `
+          MATCH (c:${this.ageToString(this.age)}CardInstance {name: $cardName, players: $players})-[:USED_IN]->(g:Game {gameId: $gameId})<-[:JOINS]-({playerId: $playerId})<-[:WONDER_FOR]-(w {name: $wonderName, gameId: $gameId})-[:SCORES]->(score:WonderScore)
+        `;
+        const params = {
+          players: play.players,
+          cardName: play.cardName,
+          gameId: this.id,
+          playerId: play.playerId,
+          wonderName: play.wonderName,
+        };
+        if (!isNaN(play.cardValue)) {
+          cypher = cypher + 'WITH toInteger(c.value) as coins, c, score WHERE coins IS NOT NULL MERGE (c)-[:PAYS {value: coins}]->(score) SET score.coins = score.coins + coins';
+        } else if (coinsAndVP.test(play.cardValue)) {
+          const [values, color] = play.cardValue.split(' ');
+          const rate = parseInt(values.match(/\((?<rate>\d+)\)/).groups.rate);
+          cypher += ' WITH score, c, length([(w)-[:PLAYS]->(card {color: $color}) | card]) * $rate AS coins MERGE (c)-[:PAYS {value: coins}]->(score) SET score.coins = score.coins + coins';
+          params.rate = rate;
+          params.color = color;
+        } else {
+          // TODO handle color "wonder"
+          const [direction, color, rate] = play.cardValue.split(' ');
+          cypher += ` WITH score, c,
+          (length([(w)-[:CLOCKWISE]->()-[:PLAYS]->(card {color: $color}) | card]) +
+            length([(w)<-[:CLOCKWISE]-()-[:PLAYS]->(card {color: $color}) | card]) +
+            length([(w)-[:PLAYS]->(card {color: $color}) | card])) * $rate AS coins
+          MERGE (c)-[:PAYS {value: coins}]->(score) SET score.coins = score.coins + coins`;
+          params.color = color;
+          params.rate = parseInt(rate);
+        }
+        return {query: cypher, params};
+      });
+      for (let i = 0; i < cyphers.length; i++) {
+        await this.runQuery(cyphers[i]);
+      }
+    }
+  }
+
   async savePendingPlays() {
     let plays = [];
     let discards = [];
@@ -393,6 +439,8 @@ class Game extends EventEmitter {
         plays.push({playerId: playerId,
           wonderName: wonderName,
           cardName: play.card.name,
+          cardColor: play.card.color,
+          cardValue: play.card.value,
           players: play.card.players === 'guild' ? play.card.players : neo4j.int(play.card.players),
           cost: {
             self: neo4j.int(play.cost.self.cost),
@@ -422,6 +470,7 @@ class Game extends EventEmitter {
       }
     }
     await this.runQuery(this.cypherPlayCards(plays));
+    await this.checkCoins(plays);
     await this.runQuery(this.cypherDiscard(discards));
     await this.runQuery(this.cypherBuildWonders(wonders));
   }
@@ -450,7 +499,6 @@ class Game extends EventEmitter {
   }
 
   handlePlayCard(player, card, cost) {
-    console.log('handle play card', player.id, card.name, card.players);
     // todo - ensure player can actually play the card
     this.pendingPlays[player.id] = {
       type: 'play',
@@ -508,7 +556,6 @@ class Game extends EventEmitter {
   }
 
   handleBuildWonder(player, card, cost) {
-    console.log('handle build wonder', player.id, card.name, card.players);
     // todo - ensure player can actually play the card
     this.pendingPlays[player.id] = {
       type: 'wonder',
@@ -522,7 +569,6 @@ class Game extends EventEmitter {
   }
 
   handleDiscard(player, card) {
-    console.log('handle discad', player.id, card.name, card.players);
     // todo - ensure player can actually play the card
     this.pendingPlays[player.id] = {
       type: 'discard',
@@ -967,7 +1013,6 @@ class Game extends EventEmitter {
       cards: cards,
       age: stringAge
     };
-    console.log('plays', cards);
     let query = `
       // save chosen plays
       MATCH (g:Game {gameId: $gameId})-[:HAS_AGE]->(a {age: $age})
