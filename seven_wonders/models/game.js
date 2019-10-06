@@ -322,6 +322,7 @@ class Game extends EventEmitter {
     this.players.forEach(player => player.emit('playersInfo', this.playersInfo));
     await playerHandsPromise;
     for (let [playerId, hand] of Object.entries(this.playersHands)) {
+      if (hand.length > (8 - this.round)) console.log('too long hand!', hand);
       this.players.filter(player => player.id === playerId).forEach((player) => {
         player.emit('hand', hand);
       });
@@ -407,11 +408,15 @@ class Game extends EventEmitter {
         } else if (coinsAndVP.test(play.cardValue)) {
           const [values, color] = play.cardValue.split(' ');
           const rate = parseInt(values.match(/\((?<rate>\d+)\)/).groups.rate);
-          cypher += ' WITH score, c, length([(w)-[:PLAYS]->(card {color: $color}) | card]) * $rate AS coins MERGE (c)-[:PAYS {value: coins}]->(score) SET score.coins = score.coins + coins';
+          if (color === 'wonder') {
+            // not a real color, rather the stages that are built
+            cypher += ' WITH score, c, length([(w)-[:CHOOSES]->()-[:HAS_STAGE]->(stage)<-[:BUILDS]-() | stage]) * $rate AS coins MERGE (c)-[:PAYS {value: coins}]->(score) SET score.coins = score.coins + coins';
+          } else {
+            cypher += ' WITH score, c, length([(w)-[:PLAYS]->(card {color: $color}) | card]) * $rate AS coins MERGE (c)-[:PAYS {value: coins}]->(score) SET score.coins = score.coins + coins';
+          }
           params.rate = rate;
           params.color = color;
         } else {
-          // TODO handle color "wonder"
           const [direction, color, rate] = play.cardValue.split(' ');
           cypher += ` WITH score, c,
           (length([(w)-[:CLOCKWISE]->()-[:PLAYS]->(card {color: $color}) | card]) +
@@ -989,7 +994,7 @@ class Game extends EventEmitter {
       OPTIONAL MATCH (freeFrom)-[:FREE_BUILDS]->(card)
       RETURN g.gameId AS gameId,
         p.playerId AS playerId,
-        collect({
+        collect(DISTINCT({
           name: card.name,
           color: card.color,
           value: card.value,
@@ -1001,7 +1006,7 @@ class Game extends EventEmitter {
             WHEN (card)<-[:FREE_BUILDS]-()<-[:PLAYS]-(w) THEN true
             ELSE false
           END
-        }) AS hand
+        })) AS hand
     `;
     return {params: params, query: query};
   }
@@ -1058,6 +1063,7 @@ class Game extends EventEmitter {
       FOREACH (unusedVariable IN CASE WHEN playInfo.cost.self > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.self}]->(g) SET myScore.coins = myScore.coins - playInfo.cost.self)
       FOREACH (unusedVariable IN CASE WHEN playInfo.cost.clockwise > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.clockwise}]->(cScore) SET myScore.coins = myScore.coins - playInfo.cost.clockwise, cScore.coins = cScore.coins + playInfo.cost.clockwise)
       FOREACH (unusedVariable IN CASE WHEN playInfo.cost.counterClockwise > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.counterClockwise}]->(ccScore) SET myScore.coins = myScore.coins - playInfo.cost.counterClockwise, ccScore.coins = ccScore.coins + playInfo.cost.counterClockwise)
+      FOREACH (unusedVariable IN CASE WHEN stage.coins IS NOT NULL THEN [1] ELSE [] END | CREATE (myScore)<-[:PAYS {value: stage.coins}]-(stage) SET myScore.coins = myScore.coins + stage.coins)
     `;
     return {params: params, query: query};
   }

@@ -14,14 +14,12 @@ const broadcast = function(data, ws) {
   });
 }
 const setDebug = function(game) {
-  let p1 = new Player({name: 'test1', id: 'test1'});
-  let p2 = new Player({name: 'test2', id: 'test2'});
-  p1.once('wonderOption', (opt) => p1.chooseWonderSide({wonderName: opt.wonderName, side: 'a'}));
-  p2.once('wonderOption', (opt) => p2.chooseWonderSide({wonderName: opt.wonderName, side: 'a'}));
-  p1.on('hand', (hand) => p1.discardCard(hand[0]));
-  p2.on('hand', (hand) => p2.discardCard(hand[0]));
-  game.addPlayer(p1);
-  game.addPlayer(p2);
+  for (let i = 1; i < game.maxPlayers; i++) {
+    let p = new Player({name: `test${i}`, id: `test${i}`});
+    p.once('wonderOption', (opt) => p.chooseWonderSide({wonderName: opt.wonderName, side: i % 2 === 0 ? 'a' : 'b'}));
+    p.on('hand', (hand) => p.discardCard(hand[0]));
+    game.addPlayer(p);
+  }
 }
 
 wss.on('connection', function(ws) {
