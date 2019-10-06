@@ -485,6 +485,7 @@ class Game extends EventEmitter {
   }
 
   async endAge() {
+    await this.runQuery(this.cypherSettleMilitary());
     this.age++;
     this.round = 1;
     if (this.age < 4) {
@@ -1067,6 +1068,34 @@ class Game extends EventEmitter {
     `;
     return {params: params, query: query};
   }
+
+  cypherSettleMilitary() {
+    let stringAge = this.ageToString(this.age);
+    const milRate = this.age === 1 ? 1 : this.age === 2 ? 3 : 5;
+    let params = {
+      gameId: this.id,
+      age: stringAge,
+      milRate: neo4j.int(milRate)
+    };
+    let query = `
+      // save chosen wonder building
+      MATCH (g:Game {gameId: $gameId})-[:HAS_AGE]->(a {age: $age})
+      MATCH (g)<-[:JOINS]-(p)<-[:WONDER_FOR]-(w),
+        (w)-[:INSTANCE_IN]->(g),
+        (cScore)<-[:SCORES]-(cw)<-[:CLOCKWISE]-(w)<-[:CLOCKWISE]-(ccw)-[:SCORES]->(ccScore),
+        (w)-[:SCORES]->(myScore)
+      WITH DISTINCT w, myScore, a, cw, cScore, ccw, ccScore,
+        reduce(s = 0, mil IN [(w)-[:PLAYS]->(c {color: 'red'}) | c.value] | s + mil) + reduce(s = 0, mil in [(w)-[:CHOOSES]->()-[:HAS_STAGE]->(stage)<-[:BUILDS]-() WHERE stage.military IS NOT NULL | stage.military] | s + mil) AS myMil,
+        reduce(s = 0, mil IN [(cw)-[:PLAYS]->(c {color: 'red'}) | c.value] | s + mil) + reduce(s = 0, mil in [(cw)-[:CHOOSES]->()-[:HAS_STAGE]->(stage)<-[:BUILDS]-() WHERE stage.military IS NOT NULL | stage.military] | s + mil) AS cMil,
+        reduce(s = 0, mil IN [(ccw)-[:PLAYS]->(c {color: 'red'}) | c.value] | s + mil) + reduce(s = 0, mil in [(ccw)-[:CHOOSES]->()-[:HAS_STAGE]->(stage)<-[:BUILDS]-() WHERE stage.military IS NOT NULL | stage.military] | s + mil) AS ccMil
+      FOREACH (unusedVariable IN CASE WHEN myMil > cMil THEN [1] ELSE [] END | CREATE (myScore)-[:DEFEATS {age: $age}]->(cScore) SET myScore.military = myScore.military + $milRate)
+      FOREACH (unusedVariable IN CASE WHEN myMil > ccMil THEN [1] ELSE [] END | CREATE (myScore)-[:DEFEATS {age: $age}]->(ccScore) SET myScore.military = myScore.military + $milRate)
+      FOREACH (unusedVariable IN CASE WHEN myMil < cMil THEN [1] ELSE [] END | SET myScore.military = myScore.military - 1)
+      FOREACH (unusedVariable IN CASE WHEN myMil < ccMil THEN [1] ELSE [] END | SET myScore.military = myScore.military - 1)
+    `;
+    return {params: params, query: query};
+  }
+
 
   cypherDiscard(cards) {
     let stringAge = this.ageToString(this.age);
