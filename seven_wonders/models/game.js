@@ -329,6 +329,55 @@ class Game extends EventEmitter {
     }
   }
 
+  getMaxScienceWithVariableScience(mappedValues) {
+    const possibleValues = ['#', '@', '&'];
+    let variableScience = mappedValues['&/@/#'] - 1;
+    delete mappedValues['&/@/#'];
+    let possiblePlays = possibleValues.map((v) => {
+      if (mappedValues[v]) {
+        return {...mappedValues, [v]: mappedValues[v] + 1};
+      } else {
+        return {...mappedValues, [v]: 1};
+      }
+    });
+    for (; variableScience > 0; --variableScience) {
+      console.log(possiblePlays, variableScience);
+      possiblePlays = possiblePlays.map((currPlay) => {
+        possibleValues.map((v) => {
+          if (currPlay[v]) {
+            return {...currPlay, [v]: currPlay[v] + 1};
+          } else {
+            return {...currPlay, [v]: 1};
+          }
+        })
+      });
+    }
+    return Math.max(...possiblePlays.map(this.calculateScienceScoreFromMap));
+  }
+
+  calculateScienceScoreFromMap(mappedValues) {
+    const sciCounts = Object.values(mappedValues);
+    return sciCounts.reduce((acc, curr) => {
+      return acc + (curr * curr);
+    }, 0) + (sciCounts.length === 3 ? Math.min(...sciCounts) * 7 : 0);
+  }
+
+  calculateScienceScore(scienceValues) {
+    const mappedValues = scienceValues.reduce((acc, curr) => {
+      if (acc[curr] == null) {
+        acc[curr] = 1;
+      } else {
+        ++acc[curr];
+      }
+      return acc;
+    }, {});
+    if (mappedValues['&/@/#'] != null) {
+      return this.getMaxScienceWithVariableScience(mappedValues);
+    } else {
+      return this.calculateScienceScoreFromMap(mappedValues);
+    }
+  };
+
   async getPlayersInfo() {
     let resp = await this.runQuery(this.cypherGetPlayersInfo());
     resp.records.forEach((record) => {
@@ -340,9 +389,12 @@ class Game extends EventEmitter {
         wonderResource: record.get('wonderResource'),
         coins: record.get('coins'),
         military: record.get('military'),
+        cultural: record.get('cultural'),
         stagesInfo: record.get('stagesInfo'),
         clockwisePlayer: record.get('clockwisePlayer'),
-        counterClockwisePlayer: record.get('counterClockwisePlayer')
+        counterClockwisePlayer: record.get('counterClockwisePlayer'),
+        scienceValues: record.get('scienceValues'),
+        scienceScore: this.calculateScienceScore(record.get('scienceValues')),
       };
     });
     // separate call to get cards played
@@ -522,6 +574,10 @@ class Game extends EventEmitter {
 
   endGame() {
     // game over check scores etc
+    // score points for end of game things
+    // update player info
+    // tally points (convert coins!)
+    // notify final score - save the science score and the winner
   }
 
   checkEndOfRound() {
