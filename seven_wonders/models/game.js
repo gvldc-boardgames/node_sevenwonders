@@ -1094,7 +1094,7 @@ class Game extends EventEmitter {
       FOREACH (unusedVariable IN CASE WHEN playInfo.cost.counterClockwise > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.counterClockwise}]->(ccScore) SET myScore.coins = myScore.coins - playInfo.cost.counterClockwise, ccScore.coins = ccScore.coins + playInfo.cost.counterClockwise)
       FOREACH (unusedVariable IN CASE WHEN stage.coins IS NOT NULL THEN [1] ELSE [] END | CREATE (myScore)<-[:PAYS {value: stage.coins}]-(stage) SET myScore.coins = myScore.coins + stage.coins)
       FOREACH (unusedVariable IN CASE WHEN stage.points IS NOT NULL THEN [1] ELSE [] END | CREATE (myScore)<-[:SCORES_POINTS {value: toInteger(stage.points)}]-(stage) SET myScore.cultural = myScore.cultural + coalesce(toInteger(stage.points), 0))
-      FOREACH (unusedVariable IN CASE WHEN stage.science IS NOT NULL THEN [1] ELSE [] END | CREATE (myScore)<-[:SCORES_SCIENCE {value: '&/@/#'}]-(stage)
+      FOREACH (unusedVariable IN CASE WHEN stage.science IS NOT NULL THEN [1] ELSE [] END | CREATE (myScore)<-[:SCORES_SCIENCE {value: '&/@/#'}]-(stage))
     `;
     return {params: params, query: query};
   }
