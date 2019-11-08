@@ -384,6 +384,30 @@ class Game extends EventEmitter {
     }
   }
 
+  async checkPoints(plays) {
+    const blueCardPlays = plays.filter(p => p.cardColor === 'blue');
+    if (blueCardPlays.length > 0) {
+      const cyphers = blueCardPlays.map((play) => {
+        const cypher = `
+          MATCH (c:${this.ageToString(this.age)}CardInstance {name: $cardName, players: $players})-[:USED_IN]->(g:Game {gameId: $gameId})<-[:JOINS]-({playerId: $playerId})<-[:WONDER_FOR]-(w {name: $wonderName, gameId: $gameId})-[:SCORES]->(score:WonderScore)
+          MERGE (c)-[:SCORES_POINTS {value: c.value}]->(score)
+            ON CREATE SET score.cultural = score.cultural + coalesce(toInteger(c.value), 0)
+        `;
+        const params = {
+          players: play.players,
+          cardName: play.cardName,
+          gameId: this.id,
+          playerId: play.playerId,
+          wonderName: play.wonderName,
+        };
+        return {query: cypher, params};
+      });
+      for (let i = 0; i < cyphers.length; i++) {
+        await this.runQuery(cyphers[i]);
+      }
+    }
+  };
+
   async checkCoins(plays) {
     const digitCheck = /\d/;
     const allDigits = /^\d+$/;
@@ -476,6 +500,7 @@ class Game extends EventEmitter {
     }
     await this.runQuery(this.cypherPlayCards(plays));
     await this.checkCoins(plays);
+    await this.checkPoints(plays);
     await this.runQuery(this.cypherDiscard(discards));
     await this.runQuery(this.cypherBuildWonders(wonders));
   }
@@ -934,6 +959,8 @@ class Game extends EventEmitter {
         wRes AS wonderResource,
         score.coins AS coins,
         score.military AS military,
+        score.cultural AS cultural,
+        [ (score)<-[sci:SCORES_SCIENCE]-() | sci.value ] AS scienceValues,
         [ (w)-[:CLOCKWISE]->()-[:WONDER_FOR]->(cp) | cp.playerId ][0] AS clockwisePlayer,
         [ (w)<-[:CLOCKWISE]-()-[:WONDER_FOR]->(cp) | cp.playerId ][0] AS counterClockwisePlayer,
         stagesInfo
@@ -1034,6 +1061,7 @@ class Game extends EventEmitter {
       FOREACH (unusedVariable IN CASE WHEN playInfo.cost.self > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.self}]->(g) SET myScore.coins = myScore.coins - playInfo.cost.self)
       FOREACH (unusedVariable IN CASE WHEN playInfo.cost.clockwise > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.clockwise}]->(cScore) SET myScore.coins = myScore.coins - playInfo.cost.clockwise, cScore.coins = cScore.coins + playInfo.cost.clockwise)
       FOREACH (unusedVariable IN CASE WHEN playInfo.cost.counterClockwise > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.counterClockwise}]->(ccScore) SET myScore.coins = myScore.coins - playInfo.cost.counterClockwise, ccScore.coins = ccScore.coins + playInfo.cost.counterClockwise)
+      FOREACH (unusedVariable IN CASE WHEN card.value IN ['@', '&', '#', '&/@/#'] THEN [1] ELSE [] END | CREATE (myScore)<-[:SCORES_SCIENCE {value: card.value}]-(card))
     `;
     return {params: params, query: query};
   }
@@ -1065,6 +1093,8 @@ class Game extends EventEmitter {
       FOREACH (unusedVariable IN CASE WHEN playInfo.cost.clockwise > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.clockwise}]->(cScore) SET myScore.coins = myScore.coins - playInfo.cost.clockwise, cScore.coins = cScore.coins + playInfo.cost.clockwise)
       FOREACH (unusedVariable IN CASE WHEN playInfo.cost.counterClockwise > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.counterClockwise}]->(ccScore) SET myScore.coins = myScore.coins - playInfo.cost.counterClockwise, ccScore.coins = ccScore.coins + playInfo.cost.counterClockwise)
       FOREACH (unusedVariable IN CASE WHEN stage.coins IS NOT NULL THEN [1] ELSE [] END | CREATE (myScore)<-[:PAYS {value: stage.coins}]-(stage) SET myScore.coins = myScore.coins + stage.coins)
+      FOREACH (unusedVariable IN CASE WHEN stage.points IS NOT NULL THEN [1] ELSE [] END | CREATE (myScore)<-[:SCORES_POINTS {value: toInteger(stage.points)}]-(stage) SET myScore.cultural = myScore.cultural + coalesce(toInteger(stage.points), 0))
+      FOREACH (unusedVariable IN CASE WHEN stage.science IS NOT NULL THEN [1] ELSE [] END | CREATE (myScore)<-[:SCORES_SCIENCE {value: '&/@/#'}]-(stage)
     `;
     return {params: params, query: query};
   }
