@@ -40,11 +40,11 @@ Stables,3,null,red,OCW,2,Apothecary
 Stables,5,null,red,OCW,2,Apothecary
 Archery Range,3,null,red,WWO,2,Workshop
 Archery Range,6,null,red,WWO,2,Workshop
-Dispensary,3,null,green,OOG,1,Apothecary
-Dispensary,4,null,green,OOG,1,Apothecary
-Laboratory,3,null,green,CCP,2,Workshop
-Laboratory,5,null,green,CCP,2,Workshop
-Library,3,null,green,SSL,3,Scriptorium
-Library,6,null,green,SSL,3,Scriptorium
-School,3,null,green,WP,3,null
-School,7,null,green,WP,3,null
+Dispensary,3,null,green,OOG,@,Apothecary
+Dispensary,4,null,green,OOG,@,Apothecary
+Laboratory,3,null,green,CCP,&,Workshop
+Laboratory,5,null,green,CCP,&,Workshop
+Library,3,null,green,SSL,#,Scriptorium
+Library,6,null,green,SSL,#,Scriptorium
+School,3,null,green,WP,#,null
+School,7,null,green,WP,#,null

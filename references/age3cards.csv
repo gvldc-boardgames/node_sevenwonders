@@ -39,13 +39,13 @@ Arsenal,4,null,red,OWWL,3,null
 Arsenal,7,null,red,OWWL,3,null
 Siege Workshop,3,null,red,WCCC,3,Laboratory
 Siege Workshop,5,null,red,WCCC,3,Laboratory
-Lodge,3,null,green,CCLP,1,Dispensary
-Lodge,6,null,green,CCLP,1,Dispensary
-Observatory,3,null,green,OOGL,2,Laboratory
-Observatory,7,null,green,OOGL,2,Laboratory
-University,3,null,green,WWPG,3,Library
-University,4,null,green,WWPG,3,Library
-Academy,3,null,green,SSSG,1,School
-Academy,7,null,green,SSSG,1,School
-Study,3,null,green,WPL,2,School
-Study,5,null,green,WPL,2,School
+Lodge,3,null,green,CCLP,@,Dispensary
+Lodge,6,null,green,CCLP,@,Dispensary
+Observatory,3,null,green,OOGL,&,Laboratory
+Observatory,7,null,green,OOGL,&,Laboratory
+University,3,null,green,WWPG,#,Library
+University,4,null,green,WWPG,#,Library
+Academy,3,null,green,SSSG,@,School
+Academy,7,null,green,SSSG,@,School
+Study,3,null,green,WPL,&,School
+Study,5,null,green,WPL,&,School

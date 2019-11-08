@@ -42,9 +42,9 @@ Barracks,3,null,red,O,1,null
 Barracks,5,null,red,O,1,null
 Guard Tower,3,null,red,C,1,null
 Guard Tower,4,null,red,C,1,null
-Apothecary,3,null,green,L,1,null
-Apothecary,5,null,green,L,1,null
-Workshop,3,null,green,G,2, 
-Workshop,7,null,green,G,2, 
-Scriptorium,3,null,green,P,3, 
-Scriptorium,4,null,green,P,3, 
+Apothecary,3,null,green,L,@,null
+Apothecary,5,null,green,L,@,null
+Workshop,3,null,green,G,&, 
+Workshop,7,null,green,G,&, 
+Scriptorium,3,null,green,P,#, 
+Scriptorium,4,null,green,P,#, 
