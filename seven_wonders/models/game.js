@@ -314,7 +314,6 @@ class Game extends EventEmitter {
 
   async startRound() {
     this.pendingPlays = {};
-    this.playersInfo = {};
     this.playersHands = {};
     let playerInfoPromise = this.getPlayersInfo();
     let playerHandsPromise = this.getPlayersHands();
@@ -379,6 +378,8 @@ class Game extends EventEmitter {
   };
 
   async getPlayersInfo() {
+    // reset playersInfo before fetching
+    this.playersInfo = {};
     let resp = await this.runQuery(this.cypherGetPlayersInfo());
     resp.records.forEach((record) => {
       this.playersInfo[record.get('playerId')] = {
@@ -389,7 +390,10 @@ class Game extends EventEmitter {
         wonderResource: record.get('wonderResource'),
         coins: record.get('coins'),
         military: record.get('military'),
+        wonderPoints: record.get('wonderPoints'),
         cultural: record.get('cultural'),
+        commercial: record.get('commercial'),
+        guilds: record.get('guilds'),
         stagesInfo: record.get('stagesInfo'),
         clockwisePlayer: record.get('clockwisePlayer'),
         counterClockwisePlayer: record.get('counterClockwisePlayer'),
@@ -572,12 +576,50 @@ class Game extends EventEmitter {
     }
   }
 
-  endGame() {
-    // game over check scores etc
-    // score points for end of game things
-    // update player info
-    // tally points (convert coins!)
-    // notify final score - save the science score and the winner
+  tallyPoints() {
+    // add tally of points
+    Object.values(this.playersInfo).forEach((playerInfo) => {
+      playerInfo.score = playerInfo.military +
+          Math.floor(playerInfo.coins / 3) +
+          playerInfo.wonderPoints +
+          playersInfo.cultural +
+          playerInfo.scienceScore +
+          playerInfo.commercial +
+          playerInfo.guilds;
+    });
+  }
+
+  saveFinalScores() {
+    this.runQuery(this.cypherSaveFinalScores());
+  }
+
+  sortScores(a, b) {
+    // higher score is better (lower index in array)
+    // remember --> if return is -1 is at lower index
+    if (a.score > b.score) {
+      return -1;
+    } else if (a.score < b.score) {
+      return 1;
+    } else {
+      // tie in scores, goes to whoever has more coins, else its a tie
+      return b.coins - a.coins;
+    }
+  }
+
+  async endGame() {
+    let promises = this.endOfGamePointsItems()
+        .map(item => this.cypherEndOfGamePoints(item))
+        .map(queryInfo => this.runQuery(queryInfo));
+    await Promise.all(promises);
+    await this.getPlayersInfo();
+    this.tallyPoints();
+    this.saveFinalScores();
+    const ranking = Object.values(this.playersInfo).sort(this.sortScores);
+    // make sure players know if there is a tie -- flag the winners
+    ranking.filter(playerInfo => playerInfo.score === ranking[0].score && playerInfo.coins === ranking[0].coins)
+        .forEach(winner => winner.winner = true);
+    // notify final score 
+    this.broadcast({messageType: 'ranking', ranking});
   }
 
   checkEndOfRound() {
@@ -772,11 +814,10 @@ class Game extends EventEmitter {
         ON CREATE SET score.military = 0,
           score.coins = 3,
           score.cultural = 0,
-          score.wonder = 0,
           score.science = 0,
           score.guilds = 0,
-          score.buildings = 0,
-          score.other = 0
+          score.commercial = 0,
+          score.wonderPoints = 0
       MERGE (wi)-[:INSTANCE_IN]->(g)
       MERGE (g)-[:PAYS {value: 3}]->(score)
       WITH wi, w
@@ -1014,6 +1055,9 @@ class Game extends EventEmitter {
         wSide AS wonderSide,
         wRes AS wonderResource,
         score.coins AS coins,
+        score.commercial AS commercial,
+        score.guilds AS guilds,
+        score.wonderPoints AS wonderPoints,
         score.military AS military,
         score.cultural AS cultural,
         [ (score)<-[sci:SCORES_SCIENCE]-() | sci.value ] AS scienceValues,
@@ -1149,7 +1193,7 @@ class Game extends EventEmitter {
       FOREACH (unusedVariable IN CASE WHEN playInfo.cost.clockwise > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.clockwise}]->(cScore) SET myScore.coins = myScore.coins - playInfo.cost.clockwise, cScore.coins = cScore.coins + playInfo.cost.clockwise)
       FOREACH (unusedVariable IN CASE WHEN playInfo.cost.counterClockwise > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.counterClockwise}]->(ccScore) SET myScore.coins = myScore.coins - playInfo.cost.counterClockwise, ccScore.coins = ccScore.coins + playInfo.cost.counterClockwise)
       FOREACH (unusedVariable IN CASE WHEN stage.coins IS NOT NULL THEN [1] ELSE [] END | CREATE (myScore)<-[:PAYS {value: stage.coins}]-(stage) SET myScore.coins = myScore.coins + stage.coins)
-      FOREACH (unusedVariable IN CASE WHEN stage.points IS NOT NULL THEN [1] ELSE [] END | CREATE (myScore)<-[:SCORES_POINTS {value: toInteger(stage.points)}]-(stage) SET myScore.cultural = myScore.cultural + coalesce(toInteger(stage.points), 0))
+      FOREACH (unusedVariable IN CASE WHEN stage.points IS NOT NULL THEN [1] ELSE [] END | CREATE (myScore)<-[:SCORES_POINTS {value: toInteger(stage.points)}]-(stage) SET myScore.wonderPoints = myScore.wonderPoints + coalesce(toInteger(stage.points), 0))
       FOREACH (unusedVariable IN CASE WHEN stage.science IS NOT NULL THEN [1] ELSE [] END | CREATE (myScore)<-[:SCORES_SCIENCE {value: '&/@/#'}]-(stage))
     `;
     return {params: params, query: query};
@@ -1218,6 +1262,140 @@ class Game extends EventEmitter {
         (w)${this.age === 2 ? '<' : ''}-[:CLOCKWISE]-${this.age === 2 ? '' : '>'}(nextW)
       DELETE bt
       MERGE (hand)-[:BELONGS_TO]->(nextW)
+    `;
+    return {query, params};
+  }
+
+  /**
+   * Get array of items that produce points at end of round
+   * @return {Object[]} items - items for calculating end of game points
+   * @return {string} items[].cardName
+   * @return {string} items[].cypherCalculatePoints
+   * @return {string} items[].pointsType
+   **/
+  endOfGamePointsItems() {
+    const items = [
+      {
+        cardName: 'Workers Guild',
+        cypherCalculatePoints: `MATCH (wonder)-[:CLOCKWISE]-(ow)-[:PLAYS]->(c {color: 'brown'})
+                        WITH wonder, card, myScore, count(c) AS points`,
+        pointsType: 'guilds',
+      },
+      {
+        cardName: 'Craftsmens Guild',
+        cypherCalculatePoints: `MATCH (wonder)-[:CLOCKWISE]-(ow)-[:PLAYS]->(c {color: 'grey'})
+                        WITH wonder, card, myScore, count(c) * 2 AS points`,
+        pointsType: 'guilds',
+      },
+      {
+        cardName: 'Traders Guild',
+        cypherCalculatePoints: `MATCH (wonder)-[:CLOCKWISE]-(ow)-[:PLAYS]->(c {color: 'yellow'})
+                        WITH wonder, card, myScore, count(c) AS points`,
+        pointsType: 'guilds',
+      },
+      {
+        cardName: 'Philosophers Guild',
+        cypherCalculatePoints: `MATCH (wonder)-[:CLOCKWISE]-(ow)-[:PLAYS]->(c {color: 'green'})
+                        WITH wonder, card, myScore, count(c) AS points`,
+        pointsType: 'guilds',
+      },
+      {
+        cardName: 'Spies Guild',
+        cypherCalculatePoints: `MATCH (wonder)-[:CLOCKWISE]-(ow)-[:PLAYS]->(c {color: 'red'})
+                        WITH wonder, card, myScore, count(c) AS points`,
+        pointsType: 'guilds',
+      },
+      {
+        cardName: 'Strategists Guild',
+        cypherCalculatePoints: `MATCH (wonder)-[:CLOCKWISE]-(ow)-[:SCORES]->()<-[:DEFEATS]-(c)
+                        WITH wonder, card, myScore, count(c) AS points`,
+        pointsType: 'guilds',
+      },
+      {
+        cardName: 'Shipowners Guild',
+        cypherCalculatePoints: `MATCH (wonder)-[:PLAYS]->(c)
+                        WHERE c.color IN ['brown', 'grey', 'purple']
+                        WITH wonder, card, myScore, count(c) AS points`,
+        pointsType: 'guilds',
+      },
+      {
+        cardName: 'Magistrates Guild',
+        cypherCalculatePoints: `MATCH (wonder)-[:CLOCKWISE]-(ow)-[:PLAYS]->(c {color: 'blue'})
+                        WITH wonder, card, myScore, count(c) AS points`,
+        pointsType: 'guilds',
+      },
+      {
+        cardName: 'Builders Guild',
+        cypherCalculatePoints: `MATCH (wonder)-[:CLOCKWISE*0..1]-(ow)-[:CHOOSES]->()-[:HAS_STAGE]->()<-[:BUILDS]-(c)
+                        WITH wonder, card, myScore, count(c) AS points`,
+        pointsType: 'guilds',
+      },
+      {
+        cardName: 'Haven',
+        cypherCalculatePoints: `MATCH (wonder)-[:PLAYS]->(c {color: 'brown'})
+                        WITH wonder, card, myScore, count(c) AS points`,
+        pointsType: 'commercial',
+      },
+      {
+        cardName: 'Chamber of Commerce',
+        cypherCalculatePoints: `MATCH (wonder)-[:PLAYS]->(c {color: 'grey'})
+                        WITH wonder, card, myScore, count(c) * 2 AS points`,
+        pointsType: 'commercial',
+      },
+      {
+        cardName: 'Lighthouse',
+        cypherCalculatePoints: `MATCH (wonder)-[:PLAYS]->(c {color: 'yellow'})
+                        WITH wonder, card, myScore, count(c) AS points`,
+        pointsType: 'commercial',
+      },
+      {
+        cardName: 'Arena',
+        cypherCalculatePoints: `MATCH (wonder)-[:CHOOSES]->()-[:HAS_STAGE]->()<-[:BUILDS]-(c)
+                        WITH wonder, card, myScore, count(c) AS points`,
+        pointsType: 'commercial',
+      },
+    ];
+    return items;
+  }
+
+  /**
+   * Award points at end of game for applicable cards
+   * @param {Object} item - end game item
+   * @param {string} item.cardName - name of card that awards points
+   * @param {string} item.cypherCalculatePoints - cypher snippet that uses wonder alias and rules of card
+   *                    to end up with an alias points (keeps alias of card and myScore in scope)
+   * @param {string} item.pointsType - key on :WonderScore to save points to (guilds or commercial)
+   **/
+  cypherEndOfGamePoints({cardName, cypherCalculatePoints, pointsType}) {
+    const params = {
+      gameId: this.id,
+      cardName
+    };
+    const query = `
+      // award points for cards at end of game
+      MATCH (:Game {gameId: $gameId})<-[:USED_IN]-(card {name: $cardName})<-[:PLAYS]-(wonder)-[:SCORES]->(myScore)
+      WITH card, wonder, myScore
+      ${cypherCalculatePoints}
+      MERGE (card)-[:SCORES_POINTS {value: points}]->(myScore)
+        ON CREATE SET myScore.${pointsType} = coalesce(myscore.${pointsType}, 0) + points
+    `;
+    return {query, params};
+  }
+
+  cypherSaveFinalScores() {
+    const params = {
+      gameId: this.id,
+      playersInfo: Object.values(this.playersInfo),
+    };
+    const query = `
+      // save final scores and winner
+      UNWIND $playersInfo AS playerInfo
+      MATCH (g:Game {gameId: $gameId})<-[:JOINS]-(p {playerId: playerInfo.playerId})<-[:WONDER_FOR]-(w),
+        (myScore)<-[:SCORES]-(w)-[:INSTANCE_IN]->(g)
+      SET myScore.score = playerInfo.score,
+        myScore.scienceScore = playerInfo.scienceScore
+      WITH g, myScore, p ORDER BY myScore.score DESC limit 1
+      MERGE (p)-[:WINS]->(g)
     `;
     return {query, params};
   }
