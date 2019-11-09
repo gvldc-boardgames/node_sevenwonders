@@ -582,7 +582,7 @@ class Game extends EventEmitter {
       playerInfo.score = playerInfo.military +
           Math.floor(playerInfo.coins / 3) +
           playerInfo.wonderPoints +
-          playersInfo.cultural +
+          playerInfo.cultural +
           playerInfo.scienceScore +
           playerInfo.commercial +
           playerInfo.guilds;
@@ -1377,7 +1377,7 @@ class Game extends EventEmitter {
       WITH card, wonder, myScore
       ${cypherCalculatePoints}
       MERGE (card)-[:SCORES_POINTS {value: points}]->(myScore)
-        ON CREATE SET myScore.${pointsType} = coalesce(myscore.${pointsType}, 0) + points
+        ON CREATE SET myScore.${pointsType} = coalesce(myScore.${pointsType}, 0) + points
     `;
     return {query, params};
   }
