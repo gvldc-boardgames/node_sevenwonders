@@ -71,3 +71,4 @@ stage.custom = CASE WHEN row.custom = 'null' THEN null ELSE row.custom END,
 stage.military = toInteger(row.military);
 MATCH (c:Card {color: 'red'})
 SET c.value = toInteger(c.value);
+MATCH (n) SET n:GamePiece;
