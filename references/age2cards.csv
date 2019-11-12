@@ -21,9 +21,9 @@ Statue,3,null,blue,WOO,4,Theater
 Statue,7,null,blue,WOO,4,Theater
 Courthouse,3,null,blue,CCL,4,Scriptorium
 Courthouse,5,null,blue,CCL,4,Scriptorium
-Forum,3,true,yellow,CC,L/G/P,East Trading Post
-Forum,6,true,yellow,CC,L/G/P,East Trading Post
-Forum,7,true,yellow,CC,L/G/P,East Trading Post
+Forum,3,true,yellow,CC,L/G/P,East Trading Post~West Trading Post
+Forum,6,true,yellow,CC,L/G/P,East Trading Post~West Trading Post
+Forum,7,true,yellow,CC,L/G/P,East Trading Post~West Trading Post
 Caravansery,3,true,yellow,WW,C/S/O/W,Marketplace
 Caravansery,5,true,yellow,WW,C/S/O/W,Marketplace
 Caravansery,6,true,yellow,WW,C/S/O/W,Marketplace

@@ -69,4 +69,5 @@ stage.science = CASE WHEN row.science = 'null' THEN null ELSE row.science END,
 stage.coins = toInteger(row.coins),
 stage.custom = CASE WHEN row.custom = 'null' THEN null ELSE row.custom END,
 stage.military = toInteger(row.military);
-
+MATCH (c:Card {color: 'red'})
+SET c.value = toInteger(c.value);

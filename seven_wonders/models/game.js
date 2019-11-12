@@ -224,11 +224,10 @@ class Game extends EventEmitter {
     let cardsDealt = await this.cardsDealt();
     // make sure not to deal out cards more than once
     if (!cardsDealt) {
-      let ages = [];
-      ages.push(this.dealAge('AgeOne'));
-      ages.push(this.dealAge('AgeTwo'));
-      ages.push(this.dealAge('AgeThree'));
-      await Promise.all(ages);
+      // one age at a time to prevent race condition for freeBuilds
+      await this.dealAge('AgeOne');
+      await this.dealAge('AgeTwo');
+      await this.dealAge('AgeThree');
     }
   }
 
@@ -438,6 +437,7 @@ class Game extends EventEmitter {
       this.round++;
       this.startRound();
     }
+    await this.runQuery(this.cypherSaveState());
   }
 
   async checkPoints(plays) {
@@ -742,7 +742,8 @@ class Game extends EventEmitter {
           g.maxPlayers = $maxPlayers,
           g.gameType = $gameType,
           g.creator = $creator,
-          g.name = $name
+          g.name = $name,
+          g.createdOn = datetime()
       WITH g
       OPTIONAL MATCH (g)<-[:JOINS]-(p)
       RETURN g.state AS state,
@@ -896,7 +897,8 @@ class Game extends EventEmitter {
       MERGE (ci)-[:IN_HAND]->(h)
       MERGE (ci)-[:USED_IN]->(g)
       WITH g, ci WHERE ci.freeFrom IS NOT NULL
-      MATCH (g)<-[:USED_IN]-(free {name: ci.freeFrom})
+      UNWIND split(ci.freeFrom, '~') AS freeName
+      MATCH (g)<-[:USED_IN]-(free {name: freeName})
       MERGE (free)-[:FREE_BUILDS]->(ci)
     `;
     return {params: params, query: query};
@@ -1109,16 +1111,8 @@ class Game extends EventEmitter {
       MATCH (a:Age {age: $age})<-[:HAS_AGE]-(g:Game {gameId: $gameId})<-[:JOINS]-(p)<-[:WONDER_FOR]-(w),
         (a)-[:HAS_HAND]->(hand)-[:BELONGS_TO]->(w)-[:INSTANCE_IN]->(g),
         (hand)<-[:IN_HAND]-(card)
-      OPTIONAL MATCH (card)-[:FREE_BUILDS]->(free)
       WITH g, p, w, hand, card,
-        CASE
-          WHEN free IS NULL THEN []
-          ELSE collect({
-            name: free.name,
-            color: free.color,
-            value: free.value
-          }) 
-        END AS freeInfo
+        [(card)-[:FREE_BUILDS]->(free) | free {.name, .color, .value}] AS freeInfo
       OPTIONAL MATCH (freeFrom)-[:FREE_BUILDS]->(card)
       RETURN g.gameId AS gameId,
         p.playerId AS playerId,
