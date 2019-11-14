@@ -13,14 +13,6 @@ const broadcast = function(data, ws) {
     }
   });
 }
-const setDebug = function(game) {
-  for (let i = 1; i < game.maxPlayers; i++) {
-    let p = new Player({name: `test${i}`, id: `test${i}`});
-    p.once('wonderOption', (opt) => p.chooseWonderSide({wonderName: opt.wonderName, side: i % 2 === 0 ? 'a' : 'b'}));
-    p.on('hand', (hand) => p.discardCard(hand[0]));
-    game.addPlayer(p);
-  }
-}
 
 wss.on('connection', function(ws) {
   let player;
@@ -71,7 +63,6 @@ wss.on('connection', function(ws) {
         };
         openGames.push(game);
         broadcast(data, ws);
-        setImmediate(() => setDebug(game));
       });
     } else if (parsed.messageType === 'joinGame'
         && game == null && player != null) {
@@ -80,6 +71,10 @@ wss.on('connection', function(ws) {
         game = gameJoined;
         game.addPlayer(player);
       }
+    } else if (parsed.messageType === 'addBot' && game != null 
+        && player != null) {
+      console.log('adding bot');
+      game.addBot(player.id);
     }
   });
   ws.send(JSON.stringify({messageType: 'connected'}));

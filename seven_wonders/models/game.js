@@ -1,6 +1,7 @@
 "use strict";
 const neo4j = require('neo4j-driver').v1;
 const EventEmitter = require('events');
+const Player = require('./player');
 const cardHelper = require('./../../helpers/card_helper');
 
 const driver = neo4j.driver(process.env.NEO4J_BOLT,
@@ -27,6 +28,21 @@ class Game extends EventEmitter {
     this.playOrder = [];
     this.setListeners();
     this.readyPromise = this.checkState();
+  }
+
+  addBot(playerId) {
+    // only let the creator request a new bot
+    if (playerId === this.creator && this.maxPlayers > this.players.length) {
+      const bot = new Player({name: `Bot #${this.players.length}`, id: `bot${this.players.length}`});
+
+      bot.once('wonderOption', (opt) => {
+        const side = ['a', 'b'][Math.floor(Math.random() * 100) % 2];
+        bot.chooseWonderSide({wonderName: opt.wonderName, side});
+      });
+      bot.on('hand', (hand) => bot.discardCard(hand[0]));
+      this.addPlayer(bot);
+      console.log('bot added');
+    }
   }
 
   setListeners() {
