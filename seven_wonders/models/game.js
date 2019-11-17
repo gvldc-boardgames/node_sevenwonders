@@ -1128,8 +1128,8 @@ class Game extends EventEmitter {
         (a)-[:HAS_HAND]->(hand)-[:BELONGS_TO]->(w)-[:INSTANCE_IN]->(g),
         (hand)<-[:IN_HAND]-(card)
       WITH g, p, w, hand, card,
-        [(card)-[:FREE_BUILDS]->(free) | free {.name, .color, .value}] AS freeInfo
-      OPTIONAL MATCH (freeFrom)-[:FREE_BUILDS]->(card)
+        [(card)-[:FREE_BUILDS]->(free) | free {.name, .color, .value}] AS freeInfo,
+        [(freeFrom)-[:FREE_BUILDS]->(card) | freeFrom.name] AS freeFrom
       RETURN g.gameId AS gameId,
         p.playerId AS playerId,
         collect(DISTINCT({
@@ -1138,7 +1138,7 @@ class Game extends EventEmitter {
           value: card.value,
           cost: card.cost,
           freeBuilds: freeInfo,
-          freeFrom: freeFrom.name,
+          freeFrom: freeFrom,
           players: card.players,
           isFree: CASE
             WHEN (card)<-[:FREE_BUILDS]-()<-[:PLAYS]-(w) THEN true

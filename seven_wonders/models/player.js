@@ -67,7 +67,6 @@ class Player extends EventEmitter {
    */
   chooseWonderSide(wonderSide) {
     if (this.wonder == null && wonderSide.wonderName === this.wonderOption.wonderName) {
-      console.log('about to emit wonder side chosen', wonderSide);
       this.wonder = {wonderName: wonderSide.wonderName, ...this.wonderOption.wonderSides.filter(s => s.side === wonderSide.side)[0]};
       this.emit('wonderSideChosen', this, wonderSide);
     }
@@ -178,7 +177,7 @@ class Player extends EventEmitter {
       Object.keys(requirements).filter(key => key.length !== 1)
           .forEach(key => delete requirements[key]);
       let playerResources = this.getMyResources();
-      card.playCombos = this.getAllCombos(requirements, playerResources);
+      card.playCombos = this.getAllCombos(requirements, playerResources, card.name);
     }
   }
 
@@ -219,7 +218,7 @@ class Player extends EventEmitter {
   }
 
   recursiveComboCheck(requirements, usableOptions) {
-    usableOptions = [...usableOptions];
+    usableOptions = usableOptions.filter(opt => opt.some(k => requirements[k] != null));
     requirements = {...requirements};
     if (usableOptions.length > 0) {
       let option = usableOptions.pop();
@@ -227,15 +226,18 @@ class Player extends EventEmitter {
       option.forEach((resource) => {
         if (requirements[resource]) {
           let tempReq = {...requirements};
+          let tempUsable = [...usableOptions];
           tempReq[resource] -= 1;
           if (tempReq[resource] <= 0) {
             delete tempReq[resource];
           }
-          ({requirements: tempReq, usableOptions} = this.checkOptionalResources(requirements, usableOptions));
-          combos.push(...this.recursiveComboCheck(tempReq, usableOptions));
+          ({requirements: tempReq, usableOptions: tempUsable} = this.checkOptionalResources(tempReq, usableOptions));
+          combos.push(...this.recursiveComboCheck(tempReq, tempUsable));
         }
       });
       return combos;
+    } else if (Object.keys(requirements).length === 0) {
+      return [{self: {cost: 0, count: 0}, clockwise: {cost: 0, count: 0}, counterClockwise: {cost: 0, count: 0}}];
     } else {
       let neighborsResources = this.getNeighborsResource(requirements);
       return this.recursiveResourceBuy(requirements, neighborsResources);  
