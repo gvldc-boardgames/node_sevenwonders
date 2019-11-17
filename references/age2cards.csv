@@ -7,12 +7,12 @@ Brickyard,3,true,brown,1,CC,null
 Brickyard,4,true,brown,1,CC,null
 Foundry,3,true,brown,1,OO,null
 Foundry,4,true,brown,1,OO,null
-Loom,3,true,grey,null,L,null
-Loom,5,true,grey,null,L,null
-Glassworks,3,true,grey,null,G,null
-Glassworks,5,true,grey,null,G,null
-Press,3,true,grey,null,P,null
-Press,5,true,grey,null,P,null
+Loom,3,true,gray,null,L,null
+Loom,5,true,gray,null,L,null
+Glassworks,3,true,gray,null,G,null
+Glassworks,5,true,gray,null,G,null
+Press,3,true,gray,null,P,null
+Press,5,true,gray,null,P,null
 Aqueduct,3,null,blue,SSS,5,Baths
 Aqueduct,7,null,blue,SSS,5,Baths
 Temple,3,null,blue,WCG,3,Altar
@@ -29,8 +29,8 @@ Caravansery,5,true,yellow,WW,C/S/O/W,Marketplace
 Caravansery,6,true,yellow,WW,C/S/O/W,Marketplace
 Vineyard,3,null,yellow,null,<V> brown 1,null
 Vineyard,6,null,yellow,null,<V> brown 1,null
-Bazar,4,null,yellow,null,<V> grey 2,null
-Bazar,7,null,yellow,null,<V> grey 2,null
+Bazar,4,null,yellow,null,<V> gray 2,null
+Bazar,7,null,yellow,null,<V> gray 2,null
 Walls,3,null,red,SSS,2,null
 Walls,7,null,red,SSS,2,null
 Training Ground,4,null,red,WOO,2,null

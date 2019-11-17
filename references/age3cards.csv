@@ -1,11 +1,11 @@
 ﻿name,players,isResource,color,cost,value,freeFrom
 Workers Guild,guild,null,purple,OOCSW,<> brown 1,null
-Craftsmens Guild,guild,null,purple,OOSS,<> grey 2,null
+Craftsmens Guild,guild,null,purple,OOSS,<> gray 2,null
 Traders Guild,guild,null,purple,LPG,<> yellow 1,null
 Philosophers Guild,guild,null,purple,CCCLP,<> green 1,null
 Spies Guild,guild,null,purple,CCCG,<> red 1,null
 Strategists Guild,guild,null,purple,OOSL,<> -1 1,null
-Shipowners Guild,guild,null,purple,WWWPG,"V brown,grey,purple 1",null
+Shipowners Guild,guild,null,purple,WWWPG,"V brown,gray,purple 1",null
 Scientists Guild,guild,null,purple,WWOOP,&/@/#,null
 Magistrates Guild,guild,null,purple,WWWSL,<> blue 1,null
 Builders Guild,guild,null,purple,SSCCG,<V> wonder 1,null
@@ -24,8 +24,8 @@ Haven,3,null,yellow,LOW,(1){1} brown,Forum
 Haven,4,null,yellow,LOW,(1){1} brown,Forum
 Lighthouse,3,null,yellow,GS,(1){1} yellow,Caravansery
 Lighthouse,6,null,yellow,GS,(1){1} yellow,Caravansery
-Chamber of Commerce,4,null,yellow,CCP,(2){2} grey,null
-Chamber of Commerce,6,null,yellow,CCP,(2){2} grey,null
+Chamber of Commerce,4,null,yellow,CCP,(2){2} gray,null
+Chamber of Commerce,6,null,yellow,CCP,(2){2} gray,null
 Arena,3,null,yellow,OSS,(3){1} wonder,Dispensary
 Arena,5,null,yellow,OSS,(3){1} wonder,Dispensary
 Arena,7,null,yellow,OSS,(3){1} wonder,Dispensary

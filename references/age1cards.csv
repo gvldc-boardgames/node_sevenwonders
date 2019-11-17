@@ -13,12 +13,12 @@ Clay Pit,3,true,brown,1,C/O,null
 Timber Yard,3,true,brown,1,S/W,null
 Forest Cave,5,true,brown,1,W/O,null
 Mine,6,true,brown,1,O/S,null
-Loom,3,true,grey,null,L,null
-Loom,6,true,grey,null,L,null
-Glassworks,3,true,grey,null,G,null
-Glassworks,6,true,grey,null,G,null
-Press,3,true,grey,null,P,null
-Press,6,true,grey,null,P,null
+Loom,3,true,gray,null,L,null
+Loom,6,true,gray,null,L,null
+Glassworks,3,true,gray,null,G,null
+Glassworks,6,true,gray,null,G,null
+Press,3,true,gray,null,P,null
+Press,6,true,gray,null,P,null
 Pawnshop,4,null,blue,null,3,null
 Pawnshop,7,null,blue,null,3,null
 Baths,3,null,blue,S,3,null

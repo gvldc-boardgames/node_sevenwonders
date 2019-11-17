@@ -1293,7 +1293,7 @@ class Game extends EventEmitter {
       },
       {
         cardName: 'Craftsmens Guild',
-        cypherCalculatePoints: `MATCH (wonder)-[:CLOCKWISE]-(ow)-[:PLAYS]->(c {color: 'grey'})
+        cypherCalculatePoints: `MATCH (wonder)-[:CLOCKWISE]-(ow)-[:PLAYS]->(c {color: 'gray'})
                         WITH wonder, card, myScore, count(c) * 2 AS points`,
         pointsType: 'guilds',
       },
@@ -1324,7 +1324,7 @@ class Game extends EventEmitter {
       {
         cardName: 'Shipowners Guild',
         cypherCalculatePoints: `MATCH (wonder)-[:PLAYS]->(c)
-                        WHERE c.color IN ['brown', 'grey', 'purple']
+                        WHERE c.color IN ['brown', 'gray', 'purple']
                         WITH wonder, card, myScore, count(c) AS points`,
         pointsType: 'guilds',
       },
@@ -1348,7 +1348,7 @@ class Game extends EventEmitter {
       },
       {
         cardName: 'Chamber of Commerce',
-        cypherCalculatePoints: `MATCH (wonder)-[:PLAYS]->(c {color: 'grey'})
+        cypherCalculatePoints: `MATCH (wonder)-[:PLAYS]->(c {color: 'gray'})
                         WITH wonder, card, myScore, count(c) * 2 AS points`,
         pointsType: 'commercial',
       },
