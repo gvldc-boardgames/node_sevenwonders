@@ -443,13 +443,33 @@ class Game extends EventEmitter {
     });
   }
 
+  playFromDiscard() {
+    console.log('hali wants to play from discard');
+    // TODO: allow hali discard
+    return Promise.resolve(true);
+  }
+
+  async checkCanPlayDiscard() {
+    const result = await this.runQuery(this.cypherCheckHaliDiscard());
+    console.log(result.records[0]);
+    return result.records[0].get('canPlayFromDiscard');
+  }
+
   async endRound() {
     await this.savePendingPlays();
-    await this.rotateHands();
+    const haliDiscard = await this.checkCanPlayDiscard();
     if (this.round === 6) {
+      await this.runQuery(this.cypherDiscardRemaining());
+      if (haliDiscard) {
+        await this.playFromDiscard();
+      }
       // end of age!
       this.endAge();
     } else {
+      if (haliDiscard) {
+        await this.playFromDiscard();
+      }
+      await this.rotateHands();
       this.round++;
       this.startRound();
     }
@@ -582,6 +602,7 @@ class Game extends EventEmitter {
   }
 
   async endAge() {
+    // TODO: check babylon play2
     await this.runQuery(this.cypherSettleMilitary());
     this.age++;
     this.round = 1;
@@ -622,7 +643,38 @@ class Game extends EventEmitter {
     }
   }
 
+  async olympiaFreeGuild() {
+    const availableGuilds = await this.runQuery(this.cypherOlympiaAvailableGuilds());
+    console.log('availableGuilds', availableGuilds);
+    if (availableGuilds && availableGuilds.records) {
+      const valuePromises = availableGuilds.records
+          .map(rec => rec.get('card'))
+          .map(card => this.endOfGamePointsItems().filter(item => card.name === item.cardName)[0])
+          .map(item => this.cypherOlympiaGuildPoints(item))
+          .map(queryInfo => this.runQuery(queryInfo));
+      let maxPoints = 0;
+      let bestGuild = null;
+      (await Promise.all(valuePromises)).forEach((result) => {
+        const record = result.records[0];
+        console.log('record', record);
+        if (record != null) {
+          const card = record.get('card');
+          // account for additional guild that would be played
+          const points = card.name === 'Shipowners Guild' ? record.get('points') + 1 : record.get('points');
+          if (points > maxPoints) {
+            bestGuild = card;
+          }
+        }
+      });
+      if (bestGuild != null) {
+        console.log('bestGuild', bestGuild);
+        await this.runQuery(this.cypherOlympiaPlayGuild(bestGuild));
+      }
+    }
+  }
+
   async endGame() {
+    await this.olympiaFreeGuild();
     let promises = this.endOfGamePointsItems()
         .map(item => this.cypherEndOfGamePoints(item))
         .map(queryInfo => this.runQuery(queryInfo));
@@ -686,7 +738,7 @@ class Game extends EventEmitter {
     return resources;
   }
 
-  // return resources availble for player to use
+  // return resources available for player to use
   getPlayerResources(player) {
     let playerInfo = this.playersInfo[player.id];
     let resources = [];
@@ -1154,18 +1206,20 @@ class Game extends EventEmitter {
     let params = {
       gameId: this.id,
       cards: cards,
-      age: stringAge
+      stringAge,
+      age: neo4j.int(this.age),
+      round: neo4j.int(this.round),
     };
     let query = `
       // save chosen plays
-      MATCH (g:Game {gameId: $gameId})-[:HAS_AGE]->(a {age: $age})
+      MATCH (g:Game {gameId: $gameId})-[:HAS_AGE]->(a {age: $stringAge})
       UNWIND $cards AS playInfo
       MATCH (g)<-[:JOINS]-({playerId: playInfo.playerId})<-[:WONDER_FOR]-(w {name: playInfo.wonderName}),
         (a)-[:HAS_HAND]->(hand)-[:BELONGS_TO]->(w),
         (hand)<-[ih:IN_HAND]-(card:${stringAge}CardInstance {players: playInfo.players, name: playInfo.cardName, gameId: $gameId}),
         (cScore)<-[:SCORES]-()<-[:CLOCKWISE]-(w)<-[:CLOCKWISE]-()-[:SCORES]->(ccScore),
         (w)-[:SCORES]->(myScore)
-      MERGE (w)-[:PLAYS]->(card)
+      MERGE (w)-[:PLAYS {age: $age, round: $round}]->(card)
       DELETE ih
       // use foreach and case to figure out if need to pay out
       FOREACH (unusedVariable IN CASE WHEN playInfo.cost.self > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.self}]->(g) SET myScore.coins = myScore.coins - playInfo.cost.self)
@@ -1181,11 +1235,13 @@ class Game extends EventEmitter {
     let params = {
       gameId: this.id,
       cards: cards,
-      age: stringAge
+      stringAge,
+      age: neo4j.int(this.age),
+      round: neo4j.int(this.round),
     };
     let query = `
       // save chosen wonder building
-      MATCH (g:Game {gameId: $gameId})-[:HAS_AGE]->(a {age: $age})
+      MATCH (g:Game {gameId: $gameId})-[:HAS_AGE]->(a {age: $stringAge})
       UNWIND $cards AS playInfo
       MATCH (g)<-[:JOINS]-({playerId: playInfo.playerId})<-[:WONDER_FOR]-(w {name: playInfo.wonderName})-[:CHOOSES]->()-[:HAS_STAGE]->(stage),
         (a)-[:HAS_HAND]->(hand)-[:BELONGS_TO]->(w)-[:INSTANCE_IN]->(g),
@@ -1196,7 +1252,7 @@ class Game extends EventEmitter {
       WITH ih, stage, card, playInfo, myScore, g, cScore, ccScore ORDER BY stage.stage
       WITH ih, card, playInfo, myScore, g, cScore, ccScore, collect(stage) AS stages
       WITH ih, card, playInfo, myScore, g, cScore, ccScore, head(stages) AS stage
-      MERGE (stage)<-[:BUILDS]-(card)
+      MERGE (stage)<-[:BUILDS {age: $age, round: $round}]-(card)
       DELETE ih
       // use foreach and case to figure out if need to pay out
       FOREACH (unusedVariable IN CASE WHEN playInfo.cost.self > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.self}]->(g) SET myScore.coins = myScore.coins - playInfo.cost.self)
@@ -1242,21 +1298,40 @@ class Game extends EventEmitter {
     let params = {
       gameId: this.id,
       cards: cards,
-      age: stringAge
+      stringAge,
+      age: neo4j.int(this.age),
+      round: neo4j.int(this.round),
     };
     let query = `
       // save chosen discards
-      MATCH (g:Game {gameId: $gameId})-[:HAS_AGE]->(a {age: $age})
+      MATCH (g:Game {gameId: $gameId})-[:HAS_AGE]->(a {age: $stringAge})
       UNWIND $cards AS playInfo
       MATCH (g)<-[:JOINS]-({playerId: playInfo.playerId})<-[:WONDER_FOR]-(w {name: playInfo.wonderName})-[:SCORES]->(score),
         (a)-[:HAS_HAND]->(hand)-[:BELONGS_TO]->(w),
         (hand)<-[ih:IN_HAND]-(card:${stringAge}CardInstance {players: playInfo.players, name: playInfo.cardName, gameId: $gameId})
-      MERGE (w)-[:DISCARDS]->(card)
+      MERGE (w)-[:DISCARDS {age: $age, round: $round}]->(card)
       DELETE ih
       CREATE (g)-[:PAYS {value: 3}]->(score)
       SET score.coins = score.coins + 3
     `;
     return {params: params, query: query};
+  }
+
+  cypherDiscardRemaining() {
+    const stringAge = this.ageToString(this.age);
+    const params = {
+      gameId: this.id,
+      stringAge,
+      age: neo4j.int(this.age),
+      round: neo4j.int(this.round),
+    };
+    const query = `
+      // discard last card in hands
+      MATCH (g:Game {gameId: $gameId})-[:HAS_AGE]->({age: $age})-[:HAS_HAND]->(hand)<-[ih:IN_HAND]-(card:${stringAge}CardInstance)
+      MERGE (g)-[:DISCARDS {age: $age, round: $round}]->(card)
+      DELETE ih
+    `;
+    return {query, params};
   }
 
   cypherRotateHands() {
@@ -1388,6 +1463,62 @@ class Game extends EventEmitter {
       ${cypherCalculatePoints}
       MERGE (card)-[:SCORES_POINTS {value: points}]->(myScore)
         ON CREATE SET myScore.${pointsType} = coalesce(myScore.${pointsType}, 0) + points
+    `;
+    return {query, params};
+  }
+
+  cypherOlympiaAvailableGuilds() {
+    const params = {
+      gameId: this.id
+    };
+    const query = `
+      MATCH (:Game {gameId: $gameId})<-[:INSTANCE_IN]-(wonder {name: 'olympia'})-[:CHOOSES]->()-[:HAS_STAGE]->({custom: 'guild'})<-[:BUILDS]-()
+      MATCH (wonder)-[:CLOCKWISE]-()-[:PLAYS]->(card {players: 'guild'})
+      RETURN card {.*} AS card
+    `;
+    return {params, query};
+  }
+
+  cypherOlympiaGuildPoints({cardName, cypherCalculatePoints,}) {
+    const params = {
+      gameId: this.id,
+      cardName
+    };
+    const query = `
+      // calculate points olympia would get if playing guilds
+      MATCH (g:Game {gameId: $gameId})<-[:INSTANCE_IN]-(wonder {name: 'olympia'})-[:SCORES]->(myScore),
+        (card:AgeThreeCardInstance {players: 'guild', name: $cardName})-[:USED_IN]->(g)
+      WITH card, wonder, myScore
+      ${cypherCalculatePoints}
+      RETURN points, card {.*} AS card
+    `;
+    return {query, params};
+  }
+
+  cypherOlympiaPlayGuild({name}) {
+    console.log('name', name);
+    const params = {
+      gameId: this.id,
+      name,
+    };
+    const query = `MATCH (g:Game {gameId: $gameId})<-[:INSTANCE_IN]-(wonder {name: 'olympia'}),
+      (card:AgeThreeCardInstance {players: 'guild', name: $name})-[:USED_IN]->(g)
+      MERGE (wonder)-[:PLAYS {age: 3, round: 7}]->(card)
+    `;
+    return {query, params};
+  }
+
+  cypherCheckHaliDiscard() {
+    const params = {
+      gameId: this.id,
+      age: neo4j.int(this.age),
+      round: neo4j.int(this.round),
+    };
+    const query = `
+      MATCH (:Game {gameId: $gameId})<-[:INSTANCE_IN]-({name: 'halikarnassus'})
+          -[:CHOOSES]->()-[:HAS_STAGE]->(stage {custom: 'discard'})
+          <-[:BUILDS {age: $age, round: $round}]-()
+      RETURN count(stage) > 0 AS canPlayFromDiscard
     `;
     return {query, params};
   }
