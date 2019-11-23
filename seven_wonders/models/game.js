@@ -355,7 +355,6 @@ class Game extends EventEmitter {
       }
     });
     for (; variableScience > 0; --variableScience) {
-      console.log(possiblePlays, variableScience);
       possiblePlays = possiblePlays.map((currPlay) => {
         possibleValues.map((v) => {
           if (currPlay[v]) {
@@ -443,15 +442,44 @@ class Game extends EventEmitter {
     });
   }
 
-  playFromDiscard() {
+  async getAvailableDiscardPlays() {
+    const result = await this.runQuery(this.cypherGetHaliDiscardOptions());
+    if (result == null || result.records == null) {
+      return [];
+    } else {
+      return result.records.map(rec => rec.get('card'));
+    }
+  }
+
+  async playFromDiscard() {
+    // notify all players that waiting for hali to play from disccard
     console.log('hali wants to play from discard');
-    // TODO: allow hali discard
-    return Promise.resolve(true);
+    this.players.forEach(p => p.emit('systemMessage', {message: 'Halikarnassus will play from discard'}));
+    const hali = this.players.filter(p => this.playersInfo[p.id].wonderName === 'halikarnassus')[0];
+    const possibleCards = await this.getAvailableDiscardPlays();
+    if (possibleCards.length === 0) {
+      hali.emit('systemMessage', {message: 'No current discard options to play'});
+    } else if (hali != null) {
+      const promise = new Promise((resolve, reject) => {
+        hali.once('freePlayChosen', async (card) => {
+          if (possibleCards.some(possible => possible.name === card.name)) {
+            await this.runQuery(this.cypherFreePlay(hali, card));
+            resolve(true);
+          } else {
+            console.error('ERROR: requested card from discard not found... too bad', card);
+            resolve(true);
+          }
+        });
+        hali.emit('freeWonderPlay', possibleCards);
+      });
+      return promise;
+    } else {
+      console.error('ERROR: Halikarnassus should have been playing from discard but...?');
+    }
   }
 
   async checkCanPlayDiscard() {
     const result = await this.runQuery(this.cypherCheckHaliDiscard());
-    console.log(result.records[0]);
     return result.records[0].get('canPlayFromDiscard');
   }
 
@@ -645,7 +673,6 @@ class Game extends EventEmitter {
 
   async olympiaFreeGuild() {
     const availableGuilds = await this.runQuery(this.cypherOlympiaAvailableGuilds());
-    console.log('availableGuilds', availableGuilds);
     if (availableGuilds && availableGuilds.records) {
       const valuePromises = availableGuilds.records
           .map(rec => rec.get('card'))
@@ -656,7 +683,6 @@ class Game extends EventEmitter {
       let bestGuild = null;
       (await Promise.all(valuePromises)).forEach((result) => {
         const record = result.records[0];
-        console.log('record', record);
         if (record != null) {
           const card = record.get('card');
           // account for additional guild that would be played
@@ -667,7 +693,6 @@ class Game extends EventEmitter {
         }
       });
       if (bestGuild != null) {
-        console.log('bestGuild', bestGuild);
         await this.runQuery(this.cypherOlympiaPlayGuild(bestGuild));
       }
     }
@@ -1327,7 +1352,7 @@ class Game extends EventEmitter {
     };
     const query = `
       // discard last card in hands
-      MATCH (g:Game {gameId: $gameId})-[:HAS_AGE]->({age: $age})-[:HAS_HAND]->(hand)<-[ih:IN_HAND]-(card:${stringAge}CardInstance)
+      MATCH (g:Game {gameId: $gameId})-[:HAS_AGE]->({age: $stringAge})-[:HAS_HAND]->(hand)<-[ih:IN_HAND]-(card:${stringAge}CardInstance)
       MERGE (g)-[:DISCARDS {age: $age, round: $round}]->(card)
       DELETE ih
     `;
@@ -1496,7 +1521,6 @@ class Game extends EventEmitter {
   }
 
   cypherOlympiaPlayGuild({name}) {
-    console.log('name', name);
     const params = {
       gameId: this.id,
       name,
@@ -1537,6 +1561,38 @@ class Game extends EventEmitter {
         myScore.scienceScore = playerInfo.scienceScore
       WITH g, myScore, p ORDER BY myScore.score DESC limit 1
       MERGE (p)-[:WINS]->(g)
+    `;
+    return {query, params};
+  }
+
+  cypherGetHaliDiscardOptions() {
+    const params = {
+      gameId: this.id
+    };
+    const query = `
+      // get discarded cards not already played by hali
+      MATCH (g:Game {gameId: $gameId})<-[:INSTANCE_IN]-(w {name: 'halikarnassus'})
+      WITH [(w)-[:PLAYS]->(card) | card.name] AS cardNames, g
+      MATCH (g)<-[:USED_IN]-(card)
+      WHERE (card)<-[:DISCARDS]-() AND NOT card.name IN cardNames
+      RETURN card { .* } AS card
+    `;
+    return {query, params};
+  }
+
+  cypherFreePlay(player, card) {
+    const params = {
+      gameId: this.id,
+      playerId: player.id,
+      card,
+      age: neo4j.int(this.age),
+      round: neo4j.int(this.round),
+    };
+    const query = `
+      // Special wonder play such as discard/play2
+      MATCH (card {name: $card.name, players: $card.players})-[:USED_IN]->(:Game {gameId: $gameId})
+          <-[:INSTANCE_IN]-(w)-[:WONDER_FOR]-(:Player {playerId: $playerId})
+      MERGE (w)-[:PLAYS {age: $age, round: $round}]->(card)
     `;
     return {query, params};
   }

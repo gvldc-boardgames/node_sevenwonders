@@ -18,8 +18,11 @@ class Player extends EventEmitter {
     this.receiveHand = this.receiveHand.bind(this);
     this.receivePlayersInfo = this.receivePlayersInfo.bind(this);
     this.handleSocketMessage = this.handleSocketMessage.bind(this);
+    this.freeWonderPlay = this.freeWonderPlay.bind(this);
+    this.on('freeWonderPlay', this.freeWonderPlay);
     this.on('hand', this.receiveHand);
     this.on('playersInfo', this.receivePlayersInfo);
+    this.on('systemMessage', (data) => this.notify({messageType: 'systemMessage', ...data}));
     if (this.ws) {
       this.ws.on('message', this.handleSocketMessage);
     }
@@ -52,6 +55,8 @@ class Player extends EventEmitter {
         this.discardCard(parsed.card);
       } else if (parsed.messageType === 'buildWonder') {
         this.buildWonder(parsed);
+      } else if (parsed.messageType === 'freePlayChosen') {
+        this.emit('freePlayChosen', parsed.card);
       }
     } catch {
       this.notify({messageType: 'parseError', errorMessage: 'failed to parse'});
@@ -70,6 +75,11 @@ class Player extends EventEmitter {
       this.wonder = {wonderName: wonderSide.wonderName, ...this.wonderOption.wonderSides.filter(s => s.side === wonderSide.side)[0]};
       this.emit('wonderSideChosen', this, wonderSide);
     }
+  }
+
+  // SPECIAL WONDER METHODS
+  freeWonderPlay(possibleCards) {
+    this.notify({possibleCards, messageType: 'freeWonderPlay'});
   }
 
   receiveHand(hand) {
