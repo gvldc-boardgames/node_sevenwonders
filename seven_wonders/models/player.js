@@ -148,8 +148,10 @@ class Player extends EventEmitter {
     if (this.canPlay) {
       this.canPlay = false;
       card = this.hand.filter(c => c.name === card.name && c.players === card.players)[0];
-      if (card != null)
-        this.emit('playCard', this, card, {clockwise, counterClockwise, self});
+      if (card != null) {
+        const event = this.hand.length > 1 ? 'playCard' : 'playSecondCard';
+        this.emit(event, this, card, {clockwise, counterClockwise, self}, 'play');
+      }
     }
   }
 
@@ -626,8 +628,9 @@ class Player extends EventEmitter {
 
   discardCard(card) {
     if (this.canPlay) {
+      const event = this.hand.length > 1 ? 'discard' : 'playSecondCard';
       this.canPlay = false;
-      this.emit('discard', this, card);
+      this.emit(event, this, card, {}, 'discard');
     }
   }
 
@@ -635,9 +638,10 @@ class Player extends EventEmitter {
     if (this.canPlay) {
       const nextStage = this.wonder && this.wonder.stages.filter(s => !s.isBuilt)[0];
       if (nextStage) {
+        const event = this.hand.length > 1 ? 'buildWonder' : 'playSecondCard';
         nextStage.isBuilt = true;
         this.canPlay = false;
-        this.emit('buildWonder', this, card, {clockwise, counterClockwise, self});
+        this.emit(event, this, card, {clockwise, counterClockwise, self}, 'wonder');
       }
     }
   }

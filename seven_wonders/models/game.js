@@ -30,11 +30,11 @@ class Game extends EventEmitter {
     this.readyPromise = this.checkState();
   }
 
-  addBot(playerId) {
+  async addBot(playerId) {
     // only let the creator request a new bot
     if (playerId === this.creator && this.maxPlayers > this.players.length) {
       const bot = new Player({name: `Bot #${this.players.length}`, id: `bot${this.players.length}`});
-
+      await bot.readyPromise;
       bot.once('wonderOption', (opt) => {
         const side = ['a', 'b'][Math.floor(Math.random() * 100) % 2];
         bot.chooseWonderSide({wonderName: opt.wonderName, side});
@@ -451,6 +451,29 @@ class Game extends EventEmitter {
     }
   }
 
+  async playTwo() {
+    console.log('bab plays two');
+    this.players.forEach(p => p.emit('systemMessage', {message: 'Babylon will play final card'}));
+    const babylon = this.players.filter(p => this.playersInfo[p.id].wonderName === 'babylon')[0];
+    await this.getPlayersHands();
+    const promise = babylon != null && new Promise((resolve, reject) => {
+      const playSecond = async (player, card, cost, type) => {
+        if (type === 'play') {
+          this.handlePlayCard(player, card, cost);
+        } else if (type === 'wonder') {
+          this.handleBuildWonder(player, card, cost);
+        } else {
+          this.handleDiscard(player, card); 
+        }
+        await this.savePendingPlays();
+        resolve(true);
+      };
+      babylon.once('playSecondCard', playSecond);
+      babylon.emit('hand', this.playersHands[babylon.id]);
+    });
+    return promise;
+  }
+
   async playFromDiscard() {
     // notify all players that waiting for hali to play from disccard
     console.log('hali wants to play from discard');
@@ -483,12 +506,23 @@ class Game extends EventEmitter {
     return result.records[0].get('canPlayFromDiscard');
   }
 
+  async checkCanPlayTwo() {
+    const result = await this.runQuery(this.cypherCheckCanPlayTwo());
+    return result.records[0].get('canPlayTwo');
+  }
+
   async endRound() {
     await this.savePendingPlays();
     const haliDiscard = await this.checkCanPlayDiscard();
     if (this.round === 6) {
+      if (await this.checkCanPlayTwo()) {
+        this.round = 7;
+        this.pendingPlays = {};
+        await this.playTwo();
+      }
       await this.runQuery(this.cypherDiscardRemaining());
       if (haliDiscard) {
+        this.round = 7;
         await this.playFromDiscard();
       }
       // end of age!
@@ -630,7 +664,6 @@ class Game extends EventEmitter {
   }
 
   async endAge() {
-    // TODO: check babylon play2
     await this.runQuery(this.cypherSettleMilitary());
     this.age++;
     this.round = 1;
@@ -1543,6 +1576,19 @@ class Game extends EventEmitter {
           -[:CHOOSES]->()-[:HAS_STAGE]->(stage {custom: 'discard'})
           <-[:BUILDS {age: $age, round: $round}]-()
       RETURN count(stage) > 0 AS canPlayFromDiscard
+    `;
+    return {query, params};
+  }
+
+  cypherCheckCanPlayTwo() {
+    const params = {
+      gameId: this.id,
+    };
+    const query = `
+      MATCH (:Game {gameId: $gameId})<-[:INSTANCE_IN]-({name: 'babylon'})
+          -[:CHOOSES]->()-[:HAS_STAGE]->(stage {custom: 'play2'})
+          <-[:BUILDS]-()
+      RETURN count(stage) > 0 AS canPlayTwo
     `;
     return {query, params};
   }
