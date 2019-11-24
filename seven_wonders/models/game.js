@@ -2,6 +2,7 @@
 const neo4j = require('neo4j-driver').v1;
 const EventEmitter = require('events');
 const Player = require('./player');
+const Bot = require('./bot');
 const cardHelper = require('./../../helpers/card_helper');
 
 const driver = neo4j.driver(process.env.NEO4J_BOLT,
@@ -33,13 +34,8 @@ class Game extends EventEmitter {
   async addBot(playerId) {
     // only let the creator request a new bot
     if (playerId === this.creator && this.maxPlayers > this.players.length) {
-      const bot = new Player({name: `Bot #${this.players.length}`, id: `bot${this.players.length}`});
+      const bot = new Bot({name: `Bot #${this.players.length}`, id: `bot${this.players.length}`});
       await bot.readyPromise;
-      bot.once('wonderOption', (opt) => {
-        const side = ['a', 'b'][Math.floor(Math.random() * 100) % 2];
-        bot.chooseWonderSide({wonderName: opt.wonderName, side});
-      });
-      bot.on('hand', (hand) => bot.discardCard(hand[0]));
       this.addPlayer(bot);
       console.log('bot added');
     }
@@ -56,9 +52,9 @@ class Game extends EventEmitter {
   setPlayerListeners(player) {
     // set up variables to use for listeners bound to "this" so they can be removed later
     // and still have proper scope
-    const handlePlayCard = (player, card, cost) => this.handlePlayCard(player, card, cost);
-    const handleBuildWonder = (player, card, cost) => this.handleBuildWonder(player, card, cost);
-    const handleDiscard = (player, card) => this.handleDiscard(player, card);
+    const handlePlayCard = (params) => this.handlePlayCard(params);
+    const handleBuildWonder = (params) => this.handleBuildWonder(params);
+    const handleDiscard = (params) => this.handleDiscard(params);
     
     // set up listeners for events from player
     player.once('wonderSideChosen', (player, wonderSide) => {
@@ -172,49 +168,6 @@ class Game extends EventEmitter {
       });
     });
     await this.runQuery(this.cypherSaveState());
-    await this.sendStartInfo();
-  }
-
-  // legacy support for start info -- scrap this later
-  async sendStartInfo() {
-    let resp = await this.runQuery(this.cypherGetStartInfo());
-    let neighborsMap = {};
-    for (let record of resp.records) {
-      neighborsMap[record.get('playerId')] = record.get('neighbors');
-    };
-    let plinfo = this.players.map((player) => {
-      return {
-        cards: [],
-        coins: 3,
-        id: player.id,
-        military: {'1': 0, '3': 0, '5': 0, '-1': 0},
-        name: player.name,
-        wonder: {
-          name: player.wonderOption.wonderName,
-          stage: 0,
-          side: null
-        }
-      };
-    });
-    this.players.forEach((player) => {
-      let data = {
-        coins: 3,
-        leftcards: [],
-        messageType: 'startInfo',
-        military: {'1': 0, '3': 0, '5': 0, '-1': 0},
-        neighbors: neighborsMap[player.id],
-        played: [],
-        plinfo,
-        rejoin: false,
-        rightcards: [],
-        wonder: {
-          name: player.wonderOption.wonderName,
-          stage: 0
-        },
-        wonderSide: null
-      };
-      player.notify(data);
-    });
   }
 
   async getPlayers() {
@@ -395,8 +348,9 @@ class Game extends EventEmitter {
     // reset playersInfo before fetching
     this.playersInfo = {};
     let resp = await this.runQuery(this.cypherGetPlayersInfo());
-    resp.records.forEach((record) => {
-      this.playersInfo[record.get('playerId')] = {
+    for (const record of resp.records) {
+      const playerId = record.get('playerId');
+      this.playersInfo[playerId] = {
         playerId: record.get('playerId'),
         playerName: record.get('playerName'),
         wonderName: record.get('wonderName'),
@@ -414,7 +368,10 @@ class Game extends EventEmitter {
         scienceValues: record.get('scienceValues'),
         scienceScore: this.calculateScienceScore(record.get('scienceValues')),
       };
-    });
+      if (this.playersInfo[playerId].wonderName === 'olympia') {
+        this.playersInfo[playerId].olympiaFreeBuild = await this.checkOlympiaFreeBuild();
+      }
+    };
     // separate call to get cards played
     resp = await this.runQuery(this.cypherGetPlayedCards());
     resp.records.forEach((record) => {
@@ -457,13 +414,13 @@ class Game extends EventEmitter {
     const babylon = this.players.filter(p => this.playersInfo[p.id].wonderName === 'babylon')[0];
     await this.getPlayersHands();
     const promise = babylon != null && new Promise((resolve, reject) => {
-      const playSecond = async (player, card, cost, type) => {
+      const playSecond = async ({player, card, cost, type}) => {
         if (type === 'play') {
-          this.handlePlayCard(player, card, cost);
+          this.handlePlayCard({player, card, cost});
         } else if (type === 'wonder') {
-          this.handleBuildWonder(player, card, cost);
+          this.handleBuildWonder({player, card, cost});
         } else {
-          this.handleDiscard(player, card); 
+          this.handleDiscard({player, card}); 
         }
         await this.savePendingPlays();
         resolve(true);
@@ -499,6 +456,11 @@ class Game extends EventEmitter {
     } else {
       console.error('ERROR: Halikarnassus should have been playing from discard but...?');
     }
+  }
+
+  async checkOlympiaFreeBuild() {
+    const result = await this.runQuery(this.cypherCheckOlympiaFree());
+    return result != null && result.records != null && result.records[0].get('canPlayFree');
   }
 
   async checkCanPlayDiscard() {
@@ -624,6 +586,7 @@ class Game extends EventEmitter {
           cardName: play.card.name,
           cardColor: play.card.color,
           cardValue: play.card.value,
+          useOlympia: play.useOlympia === true,
           players: play.card.players === 'guild' ? play.card.players : neo4j.int(play.card.players),
           cost: {
             self: neo4j.int(play.cost.self.cost),
@@ -753,12 +716,13 @@ class Game extends EventEmitter {
       this.endRound();
   }
 
-  handlePlayCard(player, card, cost) {
+  handlePlayCard({player, card, cost, useOlympia = false}) {
     // todo - ensure player can actually play the card
     this.pendingPlays[player.id] = {
       type: 'play',
       card: card,
-      cost
+      cost,
+      useOlympia,
     };
     this.checkEndOfRound();
   }
@@ -810,7 +774,7 @@ class Game extends EventEmitter {
     return resources;
   }
 
-  handleBuildWonder(player, card, cost) {
+  handleBuildWonder({player, card, cost}) {
     // todo - ensure player can actually play the card
     this.pendingPlays[player.id] = {
       type: 'wonder',
@@ -823,7 +787,7 @@ class Game extends EventEmitter {
   canBuildWonder(player, card) {
   }
 
-  handleDiscard(player, card) {
+  handleDiscard({player, card}) {
     // todo - ensure player can actually play the card
     this.pendingPlays[player.id] = {
       type: 'discard',
@@ -1284,6 +1248,10 @@ class Game extends EventEmitter {
       FOREACH (unusedVariable IN CASE WHEN playInfo.cost.clockwise > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.clockwise}]->(cScore) SET myScore.coins = myScore.coins - playInfo.cost.clockwise, cScore.coins = cScore.coins + playInfo.cost.clockwise)
       FOREACH (unusedVariable IN CASE WHEN playInfo.cost.counterClockwise > 0 THEN [1] ELSE [] END | CREATE (myScore)-[:PAYS {value: playInfo.cost.counterClockwise}]->(ccScore) SET myScore.coins = myScore.coins - playInfo.cost.counterClockwise, ccScore.coins = ccScore.coins + playInfo.cost.counterClockwise)
       FOREACH (unusedVariable IN CASE WHEN card.value IN ['@', '&', '#', '&/@/#'] THEN [1] ELSE [] END | CREATE (myScore)<-[:SCORES_SCIENCE {value: card.value}]-(card))
+      WITH playInfo, w, card
+      WHERE playInfo.useOlympia
+      MATCH (w)-[:CHOOSES]->()-[:HAS_STAGE]->(stage {custom: '1free'})
+      CREATE (card)-[:PLAYED_WITH {age: $age, round: $round}]->(stage)
     `;
     return {params: params, query: query};
   }
@@ -1563,6 +1531,20 @@ class Game extends EventEmitter {
       MERGE (wonder)-[:PLAYS {age: 3, round: 7}]->(card)
     `;
     return {query, params};
+  }
+
+  cypherCheckOlympiaFree() {
+    const params = {
+      gameId: this.id,
+      age: neo4j.int(this.age),
+    };
+    const query = `
+      MATCH (:Game {gameId: $gameId})<-[:INSTANCE_IN]-(wonder {name: 'olympia'})
+        -[:CHOOSES]->()-[:HAS_STAGE]->(stage {custom: '1free'})<-[:BUILDS]-()
+      WHERE NOT (stage)<-[:PLAYED_WITH {age: $age}]-()
+      RETURN count(stage) > 0 AS canPlayFree
+    `;
+    return {params, query};
   }
 
   cypherCheckHaliDiscard() {

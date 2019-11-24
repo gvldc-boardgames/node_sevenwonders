@@ -57,9 +57,23 @@ class Player extends EventEmitter {
         this.buildWonder(parsed);
       } else if (parsed.messageType === 'freePlayChosen') {
         this.emit('freePlayChosen', parsed.card);
+      } else if (parsed.messageType === 'useOlympia' && this.playersInfo[this.id].olympiaFreeBuild) {
+        this.canPlay = false;
+        this.emit('playCard',
+            {
+              player: this,
+              card: parsed.card,
+              useOlympia: true,
+              cost: {
+                clockwise: {resources: [], cost: 0},
+                counterClockwise: {resources: [], cost: 0},
+                self: {resources: [], cost: 0},
+              }, type: 'play'
+            });
       }
-    } catch {
-      this.notify({messageType: 'parseError', errorMessage: 'failed to parse'});
+    } catch (e) {
+      console.error('Error parsing message', e);
+      this.notify({messageType: 'systemMessage', message: 'Failed to parse message', messageType: 'error',});
     }
   }
 
@@ -125,18 +139,6 @@ class Player extends EventEmitter {
   }
 
   receivePlayersInfo(playersInfo) {
-    // legacy hack
-    if (this.playersInfo == null) {
-      let leftInfo = playersInfo[playersInfo[this.id].clockwisePlayer];
-      let rightInfo = playersInfo[playersInfo[this.id].counterClockwisePlayer];
-      this.notify({
-        messageType: 'neighborwonders',
-        left: {wonder: leftInfo.wonderName,
-            resource: this.resourceName(leftInfo.wonderResource)},
-        right: {wonder: rightInfo.wonderName,
-            resource: this.resourceName(rightInfo.wonderResource)}
-      });
-    }
     this.playersInfo = playersInfo;
     this.notify({
       messageType: 'playersInfo',
@@ -150,7 +152,7 @@ class Player extends EventEmitter {
       card = this.hand.filter(c => c.name === card.name && c.players === card.players)[0];
       if (card != null) {
         const event = this.hand.length > 1 ? 'playCard' : 'playSecondCard';
-        this.emit(event, this, card, {clockwise, counterClockwise, self}, 'play');
+        this.emit(event, {player: this, card, cost: {clockwise, counterClockwise, self}, type: 'play'});
       }
     }
   }
@@ -630,7 +632,7 @@ class Player extends EventEmitter {
     if (this.canPlay) {
       const event = this.hand.length > 1 ? 'discard' : 'playSecondCard';
       this.canPlay = false;
-      this.emit(event, this, card, {}, 'discard');
+      this.emit(event, {player: this, card, cost: {}, type: 'discard'});
     }
   }
 
@@ -641,7 +643,7 @@ class Player extends EventEmitter {
         const event = this.hand.length > 1 ? 'buildWonder' : 'playSecondCard';
         nextStage.isBuilt = true;
         this.canPlay = false;
-        this.emit(event, this, card, {clockwise, counterClockwise, self}, 'wonder');
+        this.emit(event, {player: this, card, cost: {clockwise, counterClockwise, self}, type: 'wonder'});
       }
     }
   }
