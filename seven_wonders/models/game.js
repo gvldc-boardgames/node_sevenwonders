@@ -276,6 +276,8 @@ class Game extends EventEmitter {
       this.state = 'playing';
       await this.runQuery(this.cypherSaveState());
       console.log('start round one age 1');
+      await this.getPlayersInfo();
+      this.players.forEach(player => player.emit('playersInfo', this.playersInfo));
       this.startRound()
     }
   }
@@ -283,10 +285,7 @@ class Game extends EventEmitter {
   async startRound() {
     this.pendingPlays = {};
     this.playersHands = {};
-    let playerInfoPromise = this.getPlayersInfo();
     let playerHandsPromise = this.getPlayersHands();
-    await playerInfoPromise;
-    this.players.forEach(player => player.emit('playersInfo', this.playersInfo));
     await playerHandsPromise;
     for (let [playerId, hand] of Object.entries(this.playersHands)) {
       if (hand.length > (8 - this.round)) console.log('too long hand!', hand);
@@ -475,6 +474,8 @@ class Game extends EventEmitter {
 
   async endRound() {
     await this.savePendingPlays();
+    await this.getPlayersInfo();
+    this.players.forEach(player => player.emit('playersInfo', this.playersInfo));
     const haliDiscard = await this.checkCanPlayDiscard();
     if (this.round === 6) {
       if (await this.checkCanPlayTwo()) {
@@ -1536,7 +1537,8 @@ class Game extends EventEmitter {
   cypherCheckOlympiaFree() {
     const params = {
       gameId: this.id,
-      age: neo4j.int(this.age),
+      // this is checked before age is incremented...
+      age: this.round >= 6 ? neo4j.int(this.age + 1) : neo4j.int(this.age),
     };
     const query = `
       MATCH (:Game {gameId: $gameId})<-[:INSTANCE_IN]-(wonder {name: 'olympia'})

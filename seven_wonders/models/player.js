@@ -38,6 +38,11 @@ class Player extends EventEmitter {
     }
   }
 
+  playAccepted(type) {
+    this.notify({messageType: 'systemMessage', message: `Your ${type} has been recorded, waiting for all players to play`});
+    this.notify({messageType: 'canPlay', value: false});
+  }
+
   receiveWonderOption(wonderOption) {
     this.wonderOption = wonderOption;
     this.notify({wonderOption, messageType: 'wonderOption'});
@@ -59,6 +64,7 @@ class Player extends EventEmitter {
         this.emit('freePlayChosen', parsed.card);
       } else if (parsed.messageType === 'useOlympia' && this.playersInfo[this.id].olympiaFreeBuild) {
         this.canPlay = false;
+        this.playAccepted('free play');
         this.emit('playCard',
             {
               player: this,
@@ -99,7 +105,10 @@ class Player extends EventEmitter {
   receiveHand(hand) {
     this.hand = hand;
     this.canPlay = true;
+    // clear out any messages on new hand
+    this.notify({messageType: 'systemMessage', message: ''});
     this.notify({hand: hand, messageType: 'hand'});
+    this.notify({messageType: 'canPlay', value: true});
     hand.forEach(card => setImmediate(() => {
       this.getCombos(card);
       this.notify({messageType: 'playCombos', card});
@@ -148,9 +157,10 @@ class Player extends EventEmitter {
 
   playCard({card, clockwise, counterClockwise, self}) {
     if (this.canPlay) {
-      this.canPlay = false;
       card = this.hand.filter(c => c.name === card.name && c.players === card.players)[0];
       if (card != null) {
+        this.playAccepted('card choice');
+        this.canPlay = false;
         const event = this.hand.length > 1 ? 'playCard' : 'playSecondCard';
         this.emit(event, {player: this, card, cost: {clockwise, counterClockwise, self}, type: 'play'});
       }
@@ -630,6 +640,7 @@ class Player extends EventEmitter {
 
   discardCard(card) {
     if (this.canPlay) {
+      this.playAccepted('discard');
       const event = this.hand.length > 1 ? 'discard' : 'playSecondCard';
       this.canPlay = false;
       this.emit(event, {player: this, card, cost: {}, type: 'discard'});
@@ -640,6 +651,7 @@ class Player extends EventEmitter {
     if (this.canPlay) {
       const nextStage = this.wonder && this.wonder.stages.filter(s => !s.isBuilt)[0];
       if (nextStage) {
+        this.playAccepted('wonder build');
         const event = this.hand.length > 1 ? 'buildWonder' : 'playSecondCard';
         nextStage.isBuilt = true;
         this.canPlay = false;
