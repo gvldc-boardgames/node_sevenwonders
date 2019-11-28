@@ -1,11 +1,30 @@
 "use strict";
+const url = require('url');
 const express = require('express');
 const Player = require('./player');
 const app = express();
+const port = process.env.PORT || 8008;
+const server = require('http').createServer();
+const wssSevenWonders = require('./seven_wonders/ws_server').wss;
 
-app.post('/newbot', (req, res) => { 
-  new Player()
-  res.send('New bot!');
+server.on('request', app);
+
+server.on('upgrade', function upgrade(req, sock, head) {
+  console.log('upgrade', req.url);
+  const pathname = url.parse(req.url).pathname;
+  if (pathname === '/seven_wonders') {
+    wssSevenWonders.handleUpgrade(req, sock, head, function done(ws) {
+      wssSevenWonders.emit('connection', ws, req);
+    });
+  } else {
+    sock.destroy();
+  }
 });
 
-app.listen(8008);
+app.get('/test', (req, res) => {console.log('testing'); res.send('ok'); });
+app.post('/newbot', (req, res) => { 
+  new Player();
+  res.end('Bot added');
+});
+
+server.listen(port, () => console.log(`Server listening on ${port}`));
