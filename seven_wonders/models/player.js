@@ -113,23 +113,30 @@ class Player extends EventEmitter {
       this.getCombos(card);
       this.notify({messageType: 'playCombos', card});
     }));
-    this.getWonderCombos();
+    this.notifyWonderCombos();
+  }
+
+  notifyWonderCombos() {
+    this.notify({messageType: 'wonderCombos', combos: this.getWonderCombos()});
+  }
+
+  getNextStage() {
+    return this.wonder.stages.filter(s => !s.isBuilt)[0];
   }
 
   getWonderCombos() {
     if (this.wonder == null) {
-      return;
+      return [];
     } else {
-      const nextStage = this.wonder.stages.filter(s => !s.isBuilt)[0];
+      const nextStage = this.getNextStage();
       if (nextStage == null) {
-        this.notify({messageType: 'wonderCombos', combos: []});
+        return [];
       } else {
         const requirements = this.resourceObject(nextStage.cost.split(''));
         const playerResources = this.getMyResources();
         Object.keys(requirements).filter(key => key.length !== 1)
             .forEach(key => delete requirements[key]);
-        const combos = this.getAllCombos(requirements, playerResources);
-        this.notify({messageType: 'wonderCombos', combos});
+        return this.getAllCombos(requirements, playerResources);
       }
     }
   }
@@ -201,7 +208,7 @@ class Player extends EventEmitter {
       Object.keys(requirements).filter(key => key.length !== 1)
           .forEach(key => delete requirements[key]);
       let playerResources = this.getMyResources();
-      card.playCombos = this.getAllCombos(requirements, playerResources, card.name);
+      card.playCombos = this.getAllCombos(requirements, playerResources);
     }
   }
 
@@ -242,6 +249,7 @@ class Player extends EventEmitter {
   }
 
   recursiveComboCheck(requirements, usableOptions) {
+    console.log('recursiveCheck', requirements);
     usableOptions = usableOptions.filter(opt => opt.some(k => requirements[k] != null));
     requirements = {...requirements};
     if (usableOptions.length > 0) {
@@ -256,6 +264,7 @@ class Player extends EventEmitter {
             delete tempReq[resource];
           }
           ({requirements: tempReq, usableOptions: tempUsable} = this.checkOptionalResources(tempReq, usableOptions));
+          console.log('played option', tempReq, tempUsable, resource);
           combos.push(...this.recursiveComboCheck(tempReq, tempUsable));
         }
       });

@@ -2,7 +2,7 @@
 const neo4j = require('neo4j-driver').v1;
 const EventEmitter = require('events');
 const Player = require('./player');
-const Bot = require('./bot');
+const botFactory = require('./bot_factory');
 const cardHelper = require('./../../helpers/card_helper');
 
 const driver = neo4j.driver(process.env.NEO4J_BOLT,
@@ -34,7 +34,7 @@ class Game extends EventEmitter {
   async addBot(playerId) {
     // only let the creator request a new bot
     if (playerId === this.creator && this.maxPlayers > this.players.length) {
-      const bot = new Bot({name: `Bot #${this.players.length}`, id: `bot${this.players.length}`});
+      const bot = botFactory({name: `Bot #${this.players.length}`, id: `bot${this.players.length}`});
       await bot.readyPromise;
       this.addPlayer(bot);
       console.log('bot added');
@@ -1214,6 +1214,7 @@ class Game extends EventEmitter {
           cost: card.cost,
           freeBuilds: freeInfo,
           freeFrom: freeFrom,
+          isResource: card.isResource,
           players: card.players,
           isFree: CASE
             WHEN (card)<-[:FREE_BUILDS]-()<-[:PLAYS]-(w) THEN true
