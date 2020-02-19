@@ -2,7 +2,7 @@
 const neo4j = require('neo4j-driver').v1;
 const EventEmitter = require('events');
 
-const driver = neo4j.driver(process.env.NEO4J_BOLT,
+const driver = process.env.NEO4J_BOLT && neo4j.driver(process.env.NEO4J_BOLT,
     neo4j.auth.basic('neo4j','BoardGames'),
     {disableLosslessIntegers: true});
 
@@ -209,6 +209,7 @@ class Player extends EventEmitter {
           .forEach(key => delete requirements[key]);
       let playerResources = this.getMyResources();
       card.playCombos = this.getAllCombos(requirements, playerResources);
+      return card.playCombos.length > 0;
     }
   }
 
@@ -249,7 +250,6 @@ class Player extends EventEmitter {
   }
 
   recursiveComboCheck(requirements, usableOptions) {
-    console.log('recursiveCheck', requirements);
     usableOptions = usableOptions.filter(opt => opt.some(k => requirements[k] != null));
     requirements = {...requirements};
     if (usableOptions.length > 0) {
@@ -264,7 +264,6 @@ class Player extends EventEmitter {
             delete tempReq[resource];
           }
           ({requirements: tempReq, usableOptions: tempUsable} = this.checkOptionalResources(tempReq, usableOptions));
-          console.log('played option', tempReq, tempUsable, resource);
           combos.push(...this.recursiveComboCheck(tempReq, tempUsable));
         }
       });
@@ -628,7 +627,7 @@ class Player extends EventEmitter {
     let resources = [];
     resources.push(playerInfo.wonderResource);
     if (playerInfo.cardsPlayed != null) {
-      resources.push(...playerInfo.cardsPlayed.filter(card => card.isResource && ['brown', 'grey'].indexOf(card.color) > -1)
+      resources.push(...playerInfo.cardsPlayed.filter(card => card.isResource && ['brown', 'gray'].indexOf(card.color) > -1)
                                               .map(card => card.value));
     }
     let resourceObject = this.resourceObject(resources);
@@ -673,6 +672,7 @@ class Player extends EventEmitter {
   // cypher is object with query and params
   // closes session and returns resp
   async runQuery(cypher) {
+    if (!driver) return false;
     if (cypher.query) {
       let params = cypher.params || {playerId: this.id, playerName: this.name};
       let session = driver.session();
