@@ -8,7 +8,7 @@ const wssSevenWonders = require('./seven_wonders/ws_server').wss;
 const Game = require('./seven_wonders/models/game');
 const botFactory = require('./seven_wonders/models/bot_factory');
 
-const autoGame = async () => {
+/*const autoGame = async () => {
   console.log('prep new game');
   const players = 3 + Math.floor(Math.random() * 5);
   const creator = botFactory({name: 'Bot #0', id: 'bot0'});
@@ -24,7 +24,7 @@ const autoGame = async () => {
 const intervalId = setInterval(autoGame, 600000 * 3 / 4);
 autoGame();
 setTimeout(() => clearInterval(intervalId), 60000000 * 3 / 4);
-server.on('request', app);
+*/server.on('request', app);
 
 server.on('upgrade', function upgrade(req, sock, head) {
   console.log('upgrade', req.url);
