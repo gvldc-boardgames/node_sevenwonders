@@ -19,6 +19,7 @@ class Bot extends Player {
   }
 
   freeWonderPlay(possibleCards) {
+    console.log('bot free wonder play', possibleCards);
     // TODO: pick a better card
     this.emit('freePlayChosen', possibleCards[0]);
   }

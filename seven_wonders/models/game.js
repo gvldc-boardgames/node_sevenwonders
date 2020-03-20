@@ -5,7 +5,7 @@ const Player = require('./player');
 const botFactory = require('./bot_factory');
 const cardHelper = require('./../../helpers/card_helper');
 
-const driver = neo4j.driver(process.env.NEO4J_BOLT,
+const driver = process.env.NEO4J_BOLT && neo4j.driver(process.env.NEO4J_BOLT,
     neo4j.auth.basic('neo4j','BoardGames'),
     {disableLosslessIntegers: true});
 
@@ -82,6 +82,7 @@ class Game extends EventEmitter {
   async checkState() {
     let cypher = this.cypherSetupGame();
     let resp = await this.runQuery(cypher);
+    if (!resp || !resp.records) return 'error';
     let gameInfo = resp.records[0];
     if (gameInfo && gameInfo.get('gameType') === this.gameType) {
       if (gameInfo.get('state') === 'new') {
@@ -307,20 +308,21 @@ class Game extends EventEmitter {
       }
     });
     for (; variableScience > 0; --variableScience) {
-      possiblePlays = possiblePlays.map((currPlay) => {
-        possibleValues.map((v) => {
+      possiblePlays = possiblePlays.flatMap((currPlay) => {
+        return possibleValues.map((v) => {
           if (currPlay[v]) {
             return {...currPlay, [v]: currPlay[v] + 1};
           } else {
             return {...currPlay, [v]: 1};
           }
-        })
+        });
       });
     }
     return Math.max(...possiblePlays.map(this.calculateScienceScoreFromMap));
   }
 
   calculateScienceScoreFromMap(mappedValues) {
+    //if (mappedValues == null) return 0;
     const sciCounts = Object.values(mappedValues);
     return sciCounts.reduce((acc, curr) => {
       return acc + (curr * curr);
@@ -696,6 +698,7 @@ class Game extends EventEmitter {
   }
 
   async endGame() {
+    this.state = 'finished';
     await this.olympiaFreeGuild();
     let promises = this.endOfGamePointsItems()
         .map(item => this.cypherEndOfGamePoints(item))
@@ -710,6 +713,7 @@ class Game extends EventEmitter {
         .forEach(winner => winner.winner = true);
     // notify final score 
     this.broadcast({messageType: 'ranking', ranking});
+    await this.runQuery(this.cypherSaveState());
   }
 
   checkEndOfRound() {
@@ -801,6 +805,7 @@ class Game extends EventEmitter {
   // cypher is object with query and params
   // closes session and returns resp
   async runQuery(cypher) {
+    if (!driver) return false;
     if (cypher.query) {
       let session = driver.session();
       try {

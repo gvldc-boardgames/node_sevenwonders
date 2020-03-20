@@ -99,6 +99,7 @@ class Player extends EventEmitter {
 
   // SPECIAL WONDER METHODS
   freeWonderPlay(possibleCards) {
+    console.log('player free wonder play', possibleCards);
     this.notify({possibleCards, messageType: 'freeWonderPlay'});
   }
 
