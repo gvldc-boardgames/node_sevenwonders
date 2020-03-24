@@ -68,7 +68,7 @@ class Player extends EventEmitter {
         this.emit('playCard',
             {
               player: this,
-              card: parsed.card,
+              card: this.hand.filter(c => c.name === parsed.card.name && c.players == parsed.card.players)[0],
               useOlympia: true,
               cost: {
                 clockwise: {resources: [], cost: 0},

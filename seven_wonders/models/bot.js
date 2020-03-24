@@ -28,7 +28,7 @@ class Bot extends Player {
     this.ratedPlays = [];
     this.hand = hand;
     this.canPlay = true;
-    setTimeout(() => this.getRatings(), 3000);
+    setTimeout(() => this.getRatings(), 1000);
   }
 
   getRatings() {

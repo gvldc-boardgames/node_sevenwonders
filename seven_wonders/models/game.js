@@ -445,6 +445,21 @@ class Game extends EventEmitter {
         hali.once('freePlayChosen', async (card) => {
           if (possibleCards.some(possible => possible.name === card.name)) {
             await this.runQuery(this.cypherFreePlay(hali, card));
+            // free play handles catching points and science... coins better off left to this method.
+            this.checkCoins([{
+              playerId: hali.id,
+              wonderName: 'halikarnassus',
+              cardName: card.name,
+              cardColor: card.color,
+              cardValue: card.value,
+              useOlympia: false,
+              players: card.players === 'guild' ? card.players : neo4j.int(card.players),
+              cost: {
+                self: neo4j.int(0),
+                clockwise: neo4j.int(0),
+                counterClockwise: neo4j.int(0),
+              }
+            }]);
             resolve(true);
           } else {
             console.error('ERROR: requested card from discard not found... too bad', card);
@@ -476,8 +491,6 @@ class Game extends EventEmitter {
 
   async endRound() {
     await this.savePendingPlays();
-    await this.getPlayersInfo();
-    this.players.forEach(player => player.emit('playersInfo', this.playersInfo));
     const haliDiscard = await this.checkCanPlayDiscard();
     if (this.round === 6) {
       if (await this.checkCanPlayTwo()) {
@@ -490,12 +503,16 @@ class Game extends EventEmitter {
         this.round = 7;
         await this.playFromDiscard();
       }
+      await this.getPlayersInfo();
+      this.players.forEach(player => player.emit('playersInfo', this.playersInfo));
       // end of age!
       this.endAge();
     } else {
       if (haliDiscard) {
         await this.playFromDiscard();
       }
+      await this.getPlayersInfo();
+      this.players.forEach(player => player.emit('playersInfo', this.playersInfo));
       await this.rotateHands();
       this.round++;
       this.startRound();
@@ -537,7 +554,7 @@ class Game extends EventEmitter {
     if (valuablePlays.length > 0) {
       const cyphers = valuablePlays.map((play) => {
         let cypher = `
-          MATCH (c:${this.ageToString(this.age)}CardInstance {name: $cardName, players: $players})-[:USED_IN]->(g:Game {gameId: $gameId})<-[:JOINS]-({playerId: $playerId})<-[:WONDER_FOR]-(w {name: $wonderName, gameId: $gameId})-[:SCORES]->(score:WonderScore)
+          MATCH (c {name: $cardName, players: $players})-[:USED_IN]->(g:Game {gameId: $gameId})<-[:JOINS]-({playerId: $playerId})<-[:WONDER_FOR]-(w {name: $wonderName, gameId: $gameId})-[:SCORES]->(score:WonderScore)
         `;
         const params = {
           players: play.players,
@@ -631,10 +648,13 @@ class Game extends EventEmitter {
 
   async endAge() {
     await this.runQuery(this.cypherSettleMilitary());
+    await this.getPlayersInfo();
+    this.players.forEach(player => player.emit('playersInfo', this.playersInfo));
     this.age++;
     this.round = 1;
     if (this.age < 4) {
       this.startRound();
+      this.getPlayOrder();
     } else {
       this.endGame();
     }
@@ -687,6 +707,7 @@ class Game extends EventEmitter {
           // account for additional guild that would be played
           const points = card.name === 'Shipowners Guild' ? record.get('points') + 1 : record.get('points');
           if (points > maxPoints) {
+            maxPoints = points;
             bestGuild = card;
           }
         }
@@ -1627,8 +1648,10 @@ class Game extends EventEmitter {
     const query = `
       // Special wonder play such as discard/play2
       MATCH (card {name: $card.name, players: $card.players})-[:USED_IN]->(:Game {gameId: $gameId})
-          <-[:INSTANCE_IN]-(w)-[:WONDER_FOR]-(:Player {playerId: $playerId})
+          <-[:INSTANCE_IN]-(w)-[:WONDER_FOR]-(:Player {playerId: $playerId}), (w)-[:SCORES]->(myScore)
       MERGE (w)-[:PLAYS {age: $age, round: $round}]->(card)
+      FOREACH (unusedVariable IN CASE WHEN card.value IN ['@', '&', '#', '&/@/#'] THEN [1] ELSE [] END | CREATE (myScore)<-[:SCORES_SCIENCE {value: card.value}]-(card))
+      FOREACH (unusedVariable IN CASE WHEN card.color = 'blue' THEN [1] ELSE [] END | CREATE (myScore)<-[:SCORES_POINTS {value: coalesce(toInteger(card.value), 0)}]-(card) SET myScore.cultural = myScore.cultural + coalesce(toInteger(card.value), 0))
     `;
     return {query, params};
   }
